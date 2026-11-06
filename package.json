@@ -1,0 +1,18 @@
+{
+  "name": "bedrock-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "mobile": "npx expo start apps/mobile",
+    "mobile:android": "npx expo start apps/mobile --android",
+    "mobile:ios": "npx expo start apps/mobile --ios"
+  },
+  "dependencies": {
+    "semver": "^7.7.4"
+  },
+  "devDependencies": {
+    "tailwindcss": "^4.3.0"
+  }
+}
