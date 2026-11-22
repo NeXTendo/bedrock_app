@@ -1,10 +1,10 @@
-import { useEffect, useRef } from 'react';
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import Constants from 'expo-constants';
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
+import { useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -19,8 +19,7 @@ Notifications.setNotificationHandler({
 export function useNotifications() {
   const notificationListener = useRef<any>(null);
   const responseListener = useRef<any>(null);
-  const session = useAuthStore(state => state.session);
-  const userId = session?.user?.id;
+  const userId = useAuthStore(state => state.session?.user?.id);
 
   useEffect(() => {
     if (userId) {
@@ -39,6 +38,8 @@ export function useNotifications() {
       notificationListener.current?.remove();
       responseListener.current?.remove();
     };
+    // Only re-run when userId changes (login/logout), not on every token refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 }
 
@@ -65,7 +66,7 @@ async function registerForPushNotificationsAsync(userId: string) {
     }
 
     const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
-    
+
     if (!projectId) {
       console.warn('Skipping push token registration: No projectId found in app.json. Ensure you have an EAS project configured.');
       return;
@@ -75,23 +76,18 @@ async function registerForPushNotificationsAsync(userId: string) {
       const token = (await Notifications.getExpoPushTokenAsync({
         projectId: projectId,
       })).data;
-      
+
       console.log('Push Token:', token);
 
-      const { error } = await supabase
-        .from('user_push_tokens')
-        .upsert(
-          { 
-            user_id: userId, 
-            push_token: token,
-            platform: Platform.OS,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'push_token' }
-        );
+      const { error } = await supabase.rpc('register_push_token', {
+        p_push_token: token,
+        p_platform: Platform.OS,
+      });
 
       if (error) {
         console.error('Error saving push token:', error);
+      } else {
+        console.log('Push token saved successfully.');
       }
     } catch (e) {
       console.warn('Could not get push token. This usually happens if projectId is missing in app.json or if not logged in to Expo.', e);

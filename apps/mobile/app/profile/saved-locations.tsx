@@ -1,26 +1,16 @@
-import { StyleSheet, View, Text, FlatList, TouchableOpacity, useColorScheme } from 'react-native';
+import { StyleSheet, View, Text, FlatList, TouchableOpacity } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { theme } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useAuthStore } from '@/stores/authStore';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSettingsStore } from '@/stores/useSettingsStore';
 import { AppHeader } from '@/components/AppHeader';
+import { useAppColors } from '@/hooks/useAppColors';
 
 export default function SavedLocationsScreen() {
   const { user } = useAuthStore();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const systemColorScheme = useColorScheme();
-  const { theme: storeTheme } = useSettingsStore();
-
-  const currentTheme = storeTheme === 'auto' 
-    ? (systemColorScheme || 'light') 
-    : storeTheme;
-  
-  const colors = theme[currentTheme as 'light' | 'dark'];
+  const colors = useAppColors();
 
   const { data: locations, isLoading, refetch } = useQuery({
     queryKey: ['saved-locations', user?.id],
@@ -50,12 +40,6 @@ export default function SavedLocationsScreen() {
           </Text>
         </View>
       </View>
-      <TouchableOpacity 
-        style={[styles.actionBtn, { backgroundColor: colors.surface2, borderColor: colors.border }]}
-        activeOpacity={0.7}
-      >
-        <IconSymbol name="chevron.right" color={colors.textDim} size={14} />
-      </TouchableOpacity>
     </View>
   );
 
@@ -67,11 +51,6 @@ export default function SavedLocationsScreen() {
         leftElement={
           <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
             <IconSymbol name="chevron.left" color={colors.text} size={20} />
-          </TouchableOpacity>
-        }
-        rightElement={
-          <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.accent, borderColor: colors.accent }]}>
-            <IconSymbol name="plus.circle.fill" color="#FFFFFF" size={16} />
           </TouchableOpacity>
         }
       />
@@ -105,15 +84,8 @@ const styles = StyleSheet.create({
   backButton: {
     width: 36,
     height: 36,
-    borderRadius: 4,
+    borderRadius: 12,
     borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  addBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 4,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -122,8 +94,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 14,
-    borderRadius: 4,
-    borderWidth: 1,
+    borderRadius: 16,
+    borderWidth: 0,
     marginBottom: 8,
   },
   cardInfo: {
@@ -135,8 +107,8 @@ const styles = StyleSheet.create({
   iconContainer: {
     width: 36,
     height: 36,
-    borderRadius: 4,
-    borderWidth: 1,
+    borderRadius: 12,
+    borderWidth: 0,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -155,8 +127,8 @@ const styles = StyleSheet.create({
   actionBtn: {
     width: 30,
     height: 30,
-    borderRadius: 4,
-    borderWidth: 1,
+    borderRadius: 12,
+    borderWidth: 0,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 10,

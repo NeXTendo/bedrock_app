@@ -8,6 +8,7 @@ interface ReportDraft {
     address: string;
   } | null;
   category: string | null;
+  categoryName: string | null;
   subcategory: string | null;
   severity: 'low' | 'medium' | 'high' | 'critical';
   description: string;
@@ -24,6 +25,7 @@ const initialDraft: ReportDraft = {
   photos: [],
   location: null,
   category: null,
+  categoryName: null,
   subcategory: null,
   severity: 'medium',
   description: '',

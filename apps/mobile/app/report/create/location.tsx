@@ -3,25 +3,37 @@ import { StyleSheet, View, Text, TouchableOpacity, Animated } from 'react-native
 import { useRouter } from 'expo-router';
 import { useReportStore } from '@/stores/reportStore';
 import { useLocation } from '@/hooks/useLocation';
-import { theme } from '@/constants/theme';
+import { useAppColors } from '@/hooks/useAppColors';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
 export default function LocationStepScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const colors = useAppColors();
   const mapRef = useRef<MapView>(null);
-  const pinAnim = useRef(new Animated.Value(0)).current;
+  const pinAnim = useMemo(() => new Animated.Value(0), []);
 
   const { setDraft } = useReportStore();
   const { location: userLocation, address: userAddress } = useLocation();
   const [selectedCoord, setSelectedCoord] = useState<[number, number] | null>(null);
 
+  const currentCoord: [number, number] | null = selectedCoord ?? (
+    userLocation
+      ? [userLocation.coords.longitude, userLocation.coords.latitude]
+      : null
+  );
+
   useEffect(() => {
     if (userLocation && !selectedCoord) {
-      setSelectedCoord([userLocation.coords.longitude, userLocation.coords.latitude]);
+      mapRef.current?.animateToRegion({
+        latitude: userLocation.coords.latitude,
+        longitude: userLocation.coords.longitude,
+        latitudeDelta: 0.005,
+        longitudeDelta: 0.005,
+      });
     }
   }, [userLocation, selectedCoord]);
 
@@ -56,11 +68,11 @@ export default function LocationStepScreen() {
   };
 
   const handleNext = () => {
-    if (selectedCoord) {
+    if (currentCoord) {
       setDraft({
         location: {
-          latitude: selectedCoord[1],
-          longitude: selectedCoord[0],
+          latitude: currentCoord[1],
+          longitude: currentCoord[0],
           address: userAddress || 'Selected Location',
         },
       });
@@ -69,15 +81,15 @@ export default function LocationStepScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: colors.background }]}>
         <TouchableOpacity 
           onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')} 
           style={styles.backButton}
         >
-          <IconSymbol name="chevron.right" color={theme.colors.text} size={24} style={{ transform: [{ rotate: '180deg' }] }} />
+          <IconSymbol name="chevron.left" color={colors.text} size={22} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Pin Location</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Choose a location</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -88,8 +100,8 @@ export default function LocationStepScreen() {
           onRegionChange={onRegionChange}
           onRegionChangeComplete={onRegionChangeComplete}
           initialRegion={{
-            latitude: selectedCoord?.[1] || -15.4167,
-            longitude: selectedCoord?.[0] || 28.2833,
+            latitude: currentCoord?.[1] || -15.4167,
+            longitude: currentCoord?.[0] || 28.2833,
             latitudeDelta: 0.01,
             longitudeDelta: 0.01,
           }}
@@ -106,25 +118,25 @@ export default function LocationStepScreen() {
           pointerEvents="none"
         >
           <View style={styles.pinShadow} />
-          <IconSymbol name="mappin.and.ellipse" color={theme.colors.red} size={48} />
+          <IconSymbol name="mappin.and.ellipse" color={colors.error} size={48} />
         </Animated.View>
 
         <TouchableOpacity 
-          style={[styles.recenterButton, { bottom: 40 }]} 
+          style={[styles.recenterButton, { bottom: 40, backgroundColor: colors.surface, borderColor: colors.border }]} 
           onPress={recenter}
         >
-          <IconSymbol name="location.fill" color={theme.colors.text} size={24} />
+          <IconSymbol name="location.fill" color={colors.text} size={22} />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.footer}>
-        <Text style={styles.instruction}>Drag the map to place the pin precisely on the issue.</Text>
+      <View style={[styles.footer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+        <Text style={[styles.instruction, { color: colors.textDim }]}>Move the map to place the pin at the issue.</Text>
         <TouchableOpacity 
-          style={[styles.nextButton, !selectedCoord && styles.disabledButton]} 
+          style={[styles.nextButton, { backgroundColor: colors.accent }, !currentCoord && styles.disabledButton]} 
           onPress={handleNext}
-          disabled={!selectedCoord}
+          disabled={!currentCoord}
         >
-          <Text style={styles.nextText}>CONFIRM LOCATION</Text>
+          <Text style={styles.nextText}>Confirm location</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -134,7 +146,7 @@ export default function LocationStepScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: '#F4F2EA',
   },
   header: {
     paddingHorizontal: 20,
@@ -142,7 +154,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: theme.colors.bg,
   },
   backButton: {
     width: 44,
@@ -151,8 +162,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   headerTitle: {
-    color: theme.colors.text,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
   },
   mapContainer: {
@@ -184,14 +194,12 @@ const styles = StyleSheet.create({
   recenterButton: {
     position: 'absolute',
     right: 20,
-    backgroundColor: theme.colors.surface,
     width: 48,
     height: 48,
     borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: theme.colors.border,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
@@ -201,28 +209,23 @@ const styles = StyleSheet.create({
   },
   footer: {
     padding: 24,
-    backgroundColor: theme.colors.surface,
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
   },
   instruction: {
-    color: theme.colors.textDim,
     textAlign: 'center',
     marginBottom: 20,
     fontSize: 14,
   },
   nextButton: {
-    backgroundColor: theme.colors.accent,
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
   },
   disabledButton: {
     opacity: 0.5,
   },
   nextText: {
-    color: 'white',
-    fontWeight: '800',
-    letterSpacing: 1,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
 });

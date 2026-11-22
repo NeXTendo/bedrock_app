@@ -9,24 +9,21 @@ interface CategoryPillProps {
   icon?: string;
   isActive: boolean;
   onPress: () => void;
-  color?: string;
 }
 
-export function CategoryPill({ label, icon, isActive, onPress, color }: CategoryPillProps) {
+export function CategoryPill({ label, icon, isActive, onPress }: CategoryPillProps) {
   const systemColorScheme = useColorScheme();
   const { theme: storeTheme } = useSettingsStore();
   const currentTheme = storeTheme === 'auto' ? (systemColorScheme || 'light') : storeTheme;
   const colors = theme[currentTheme as 'light' | 'dark'];
-
-  const activeColor = color || colors.accent;
 
   return (
     <TouchableOpacity
       style={[
         styles.pill,
         isActive
-          ? { backgroundColor: activeColor + '22', borderColor: activeColor }
-          : { backgroundColor: colors.surface, borderColor: colors.border },
+          ? { backgroundColor: colors.highlightSoft, borderColor: 'transparent' }
+          : { backgroundColor: colors.surface, borderColor: 'transparent' },
       ]}
       onPress={onPress}
       activeOpacity={0.75}
@@ -35,10 +32,10 @@ export function CategoryPill({ label, icon, isActive, onPress, color }: Category
         <IconSymbol 
           name={icon as any} 
           size={13} 
-          color={isActive ? activeColor : colors.textDim}
+          color={isActive ? colors.highlight : colors.textDim}
         />
       )}
-      <Text style={[styles.label, { color: isActive ? activeColor : colors.textDim }]}>
+      <Text style={[styles.label, { color: isActive ? colors.highlight : colors.text }]}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -50,10 +47,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 18,
+    borderWidth: 0,
   },
   label: {
     fontSize: 13,

@@ -10,6 +10,7 @@ import ReportList from './pages/department/ReportList'
 import ReportDetail from './pages/department/ReportDetail'
 import MapView from './pages/department/Map'
 import TeamSettings from './pages/department/TeamSettings'
+import Teams from './pages/department/Teams'
 import { Loader2 } from 'lucide-react'
 
 /**
@@ -98,6 +99,7 @@ function App() {
               <Route path="reports/:id" element={<ReportDetail />} />
               <Route path="map" element={<MapView />} />
               <Route path="team" element={<TeamSettings />} />
+              <Route path="teams" element={<Teams />} />
               {/* Unknown sub-path → department dashboard (absolute) */}
               <Route path="*" element={<DeptFallback />} />
             </Route>

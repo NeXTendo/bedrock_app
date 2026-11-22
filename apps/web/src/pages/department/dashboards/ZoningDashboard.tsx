@@ -8,8 +8,8 @@ export default function ZoningDashboard({ deptId }: { deptId: string }) {
       deptId={deptId}
       departmentName="Urban Planning & City Zoning"
       departmentTagline="Land use compliance, unauthorized construction, setback violations & planning"
-      icon={<Building2 size={30} />}
-      primaryColor="#a855f7"
+      icon={<Building2 size={22} />}
+      primaryColor="#7c3aed"
       accentGradient="from-purple-600 via-indigo-600 to-slate-900"
     />
   );

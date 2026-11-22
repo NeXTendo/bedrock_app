@@ -7,21 +7,14 @@ import {
   Platform, 
   useColorScheme,
 } from 'react-native';
-import { Tabs } from 'expo-router';
-
-type BottomTabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>>[0];
-import { BlurView } from 'expo-blur';
+import { Tabs, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import Animated, { 
-  useAnimatedStyle, 
-  withSpring, 
-  useSharedValue,
-} from 'react-native-reanimated';
-
 import { theme } from '@/constants/theme';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { IconSymbol } from './ui/icon-symbol';
+
+type BottomTabBarProps = Parameters<NonNullable<React.ComponentProps<typeof Tabs>['tabBar']>>[0];
 
 interface TabConfig {
   name: string;
@@ -66,28 +59,16 @@ function TabItem({ config, isFocused, onPress, colors, isDark }: {
   colors: any;
   isDark: boolean;
 }) {
-  const scale = useSharedValue(1);
-
-  const animStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: withSpring(scale.value, { damping: 14, stiffness: 200 }) }],
-  }));
-
-  const handlePress = () => {
-    scale.value = 0.85;
-    setTimeout(() => { scale.value = 1; }, 100);
-    onPress();
-  };
-
   if (config.isAction) {
     return (
       <TouchableOpacity
-        onPress={handlePress}
-        activeOpacity={0.85}
+        onPress={onPress}
+        activeOpacity={0.7}
         style={styles.actionTab}
       >
-        <Animated.View style={[styles.actionPill, { backgroundColor: colors.accent }, animStyle]}>
+        <View style={[styles.actionPill, { backgroundColor: colors.highlight, shadowColor: colors.highlight }]}>
           <IconSymbol name="plus" color={isDark ? '#0c0c0e' : '#fff'} size={20} />
-        </Animated.View>
+        </View>
         <Text style={[styles.label, { color: colors.accent, fontWeight: '700' }]}>
           {config.label}
         </Text>
@@ -97,21 +78,20 @@ function TabItem({ config, isFocused, onPress, colors, isDark }: {
 
   return (
     <TouchableOpacity
-      onPress={handlePress}
-      activeOpacity={0.8}
+      onPress={onPress}
+      activeOpacity={0.7}
       style={styles.tabItem}
     >
-      <Animated.View style={[
+      <View style={[
         styles.iconPill,
         isFocused && { backgroundColor: colors.accentSoft },
-        animStyle,
       ]}>
         <IconSymbol
           name={config.icon as any}
           color={isFocused ? colors.accent : colors.tabIconDefault}
           size={19}
         />
-      </Animated.View>
+      </View>
       <Text style={[
         styles.label,
         { 
@@ -125,7 +105,8 @@ function TabItem({ config, isFocused, onPress, colors, isDark }: {
   );
 }
 
-export function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+export function AdaptiveTabBar({ state, descriptors }: BottomTabBarProps) {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const systemColorScheme = useColorScheme();
   const { theme: storeTheme, hapticsEnabled } = useSettingsStore();
@@ -140,30 +121,30 @@ export function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarP
 
   const triggerHaptic = (style: 'light' | 'medium' = 'light') => {
     if (!hapticsEnabled) return;
-    if (style === 'medium') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    try {
+      if (style === 'medium') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+      } else {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      }
+    } catch {}
   };
 
-  const handlePress = (routeName: string, isFocused: boolean) => {
-    if (routeName === 'report') {
+  const handlePress = (route: typeof state.routes[0], isFocused: boolean) => {
+    console.log('👉 [NavBar] Tap on tab:', route.name, 'isFocused:', isFocused);
+
+    if (route.name === 'report') {
       triggerHaptic('medium');
-      navigation.navigate('report/create' as any);
+      router.push('/report/create');
       return;
     }
 
     triggerHaptic('light');
 
-    const event = navigation.emit({
-      type: 'tabPress',
-      target: state.routes.find((r) => r.name === routeName)?.key || '',
-      canPreventDefault: true,
-    });
-
-    if (!isFocused && !event.defaultPrevented) {
-      navigation.navigate(routeName);
+    if (!isFocused) {
+      const targetPath = route.name === 'index' ? '/(tabs)' : `/(tabs)/${route.name}`;
+      console.log('👉 [NavBar] Navigating to:', targetPath);
+      router.navigate(targetPath as any);
     }
   };
 
@@ -176,21 +157,10 @@ export function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarP
         <View style={[
           styles.iosIsland,
           {
-            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.07)',
-            backgroundColor: isDark ? 'rgba(14,13,12,0.82)' : 'rgba(253,249,243,0.88)',
+            borderColor: colors.border,
+            backgroundColor: colors.surface,
           }
         ]}>
-          <BlurView 
-            intensity={80} 
-            tint={isDark ? 'dark' : 'extraLight'} 
-            style={StyleSheet.absoluteFill} 
-          />
-          {/* top gleam */}
-          <View style={[
-            styles.topGleam,
-            { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.5)' }
-          ]} />
-
           <View style={styles.tabRow}>
             {state.routes.map((route, index) => {
               const isFocused = state.index === index;
@@ -204,7 +174,7 @@ export function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarP
                   key={route.key}
                   config={config}
                   isFocused={isFocused}
-                  onPress={() => handlePress(route.name, isFocused)}
+                  onPress={() => handlePress(route, isFocused)}
                   colors={colors}
                   isDark={isDark}
                 />
@@ -239,7 +209,7 @@ export function AdaptiveTabBar({ state, descriptors, navigation }: BottomTabBarP
               key={route.key}
               config={config}
               isFocused={isFocused}
-              onPress={() => handlePress(route.name, isFocused)}
+              onPress={() => handlePress(route, isFocused)}
               colors={colors}
               isDark={isDark}
             />
@@ -261,27 +231,20 @@ const styles = StyleSheet.create({
   },
   iosIsland: {
     width: '100%',
-    height: 62,
+    height: 64,
     borderRadius: 22,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
     justifyContent: 'center',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.18,
-        shadowRadius: 20,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
       },
-      default: { elevation: 8 },
+      default: { elevation: 4 },
     }),
-  },
-  topGleam: {
-    position: 'absolute',
-    top: 0,
-    left: 14,
-    right: 14,
-    height: 1,
   },
   tabRow: {
     flexDirection: 'row',
@@ -299,14 +262,14 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   iconPill: {
-    width: 40,
+    width: 42,
     height: 26,
     borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },
   label: {
-    fontSize: 10,
+    fontSize: 11,
     letterSpacing: 0.1,
   },
   actionTab: {
@@ -317,19 +280,18 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   actionPill: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
       ios: {
-        shadowColor: '#f59e0b',
         shadowOffset: { width: 0, height: 3 },
-        shadowOpacity: 0.35,
-        shadowRadius: 8,
+        shadowOpacity: 0.18,
+        shadowRadius: 5,
       },
-      android: { elevation: 4 },
+      android: { elevation: 2 },
     }),
   },
 

@@ -8,8 +8,8 @@ export default function HealthDashboard({ deptId }: { deptId: string }) {
       deptId={deptId}
       departmentName="Public Health & Environment"
       departmentTagline="Environmental hazards, bio-waste risks, sanitation inspections & air quality"
-      icon={<Activity size={30} />}
-      primaryColor="#ec4899"
+      icon={<Activity size={22} />}
+      primaryColor="#e11d48"
       accentGradient="from-pink-600 via-rose-600 to-slate-900"
     />
   );

@@ -11,11 +11,13 @@ import {
 import { theme } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useHeatmapStore } from '@/stores/useHeatmapStore';
+import { useSettingsStore } from '@/stores/useSettingsStore';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 
 export function HeatmapOnboardingModal() {
   const systemColorScheme = useColorScheme();
+  const { theme: storeTheme } = useSettingsStore();
   
   const { 
     onboardingModalVisible, 
@@ -24,44 +26,46 @@ export function HeatmapOnboardingModal() {
     toggleHeatmap
   } = useHeatmapStore();
 
-  const currentTheme: 'light' | 'dark' = systemColorScheme === 'dark' ? 'dark' : 'light';
+  const currentTheme: 'light' | 'dark' = storeTheme === 'auto'
+    ? (systemColorScheme === 'dark' ? 'dark' : 'light')
+    : storeTheme;
   const colors = theme[currentTheme];
 
   const [currentPage, setCurrentPage] = useState(0);
 
   const pages = [
     {
-      title: 'Spatial Heatmaps',
-      subtitle: 'Visualize Community Activity',
-      description: 'The heatmap overlay maps community reports in real time, revealing spatial patterns, densities, and high-frequency problem areas that require direct focus.',
+      title: 'Report activity map',
+      subtitle: 'Spot report patterns',
+      description: 'Nearby reports are grouped on the map so busy areas are easy to find.',
       icon: 'flame.fill',
-      iconColor: '#FF6B6B',
-      bgGlow: 'rgba(255, 107, 107, 0.1)',
+      iconColor: colors.accent,
+      bgGlow: colors.accentSoft,
       illustration: (
         <View style={styles.illContainer}>
-          <View style={[styles.illCircle, { width: 140, height: 140, borderRadius: 70, backgroundColor: 'rgba(255, 107, 107, 0.1)' }]} />
-          <View style={[styles.illCircle, { width: 90, height: 90, borderRadius: 45, backgroundColor: 'rgba(255, 107, 107, 0.2)' }]} />
-          <View style={[styles.illCircle, { width: 50, height: 50, borderRadius: 25, backgroundColor: 'rgba(255, 107, 107, 0.45)', justifyContent: 'center', alignItems: 'center' }]}>
-            <IconSymbol name="flame.fill" size={24} color="#FFF" />
+          <View style={[styles.illCircle, { width: 140, height: 140, borderRadius: 70, backgroundColor: colors.accentSoft }]} />
+          <View style={[styles.illCircle, { width: 90, height: 90, borderRadius: 45, backgroundColor: colors.accent + '40' }]} />
+          <View style={[styles.illCircle, { width: 50, height: 50, borderRadius: 25, backgroundColor: colors.accent, justifyContent: 'center', alignItems: 'center' }]}>
+            <IconSymbol name="flame.fill" size={24} color={colors.surface} />
           </View>
         </View>
       ),
     },
     {
-      title: 'Intensity Scale',
-      subtitle: 'Reading the Gradient Key',
-      description: 'The vertical floating scale key shows report concentration. Cool, faint colors indicate isolated issues, while intense bright centers denote critical density hotspots.',
+      title: 'Read the heatmap',
+      subtitle: 'More color means more reports',
+      description: 'Darker areas show where more reports have been filed.',
       icon: 'layers.fill',
-      iconColor: '#4D96FF',
-      bgGlow: 'rgba(77, 150, 255, 0.1)',
+      iconColor: colors.accent,
+      bgGlow: colors.accentSoft,
       illustration: (
         <View style={styles.illContainer}>
           <View style={styles.diagramRow}>
             {/* Legend diagram mock */}
             <View style={[styles.diagramLegend, { borderColor: colors.border }]}>
-              <View style={[styles.diagramGradientStrip, { backgroundColor: '#FF6B6B' }]} />
-              <View style={[styles.diagramGradientStrip, { backgroundColor: '#FFB84C' }]} />
-              <View style={[styles.diagramGradientStrip, { backgroundColor: '#4D96FF' }]} />
+              <View style={[styles.diagramGradientStrip, { backgroundColor: colors.accentSoft }]} />
+              <View style={[styles.diagramGradientStrip, { backgroundColor: colors.accent + '88' }]} />
+              <View style={[styles.diagramGradientStrip, { backgroundColor: colors.accent }]} />
             </View>
             <View style={styles.diagramLabels}>
               <View style={styles.diagramLabelItem}>
@@ -78,33 +82,33 @@ export function HeatmapOnboardingModal() {
       ),
     },
     {
-      title: 'Cycle & Filter',
-      subtitle: 'Isolate Infrastructural Stress',
-      description: 'Tap the legend key itself to cycle between Overall Density, Roads & Potholes, Water & Sanitation, Waste, or Electrical hazards to study specific urban demands.',
+      title: 'Filter by category',
+      subtitle: 'Focus on one issue type',
+      description: 'Use the map control to switch between all reports, roads, water, waste, and utilities.',
       icon: 'map.fill',
-      iconColor: '#6BCB77',
-      bgGlow: 'rgba(107, 203, 119, 0.1)',
+      iconColor: colors.accent,
+      bgGlow: colors.accentSoft,
       illustration: (
         <View style={styles.illContainer}>
           <View style={styles.cycleGrid}>
             <View style={[styles.cycleBadge, { backgroundColor: colors.surface2 }]}>
-              <IconSymbol name="car.fill" size={16} color="#E53935" />
+              <IconSymbol name="car.fill" size={16} color={colors.accent} />
               <Text style={[styles.cycleBadgeText, { color: colors.text }]}>Roads</Text>
             </View>
             <View style={[styles.cycleBadge, { backgroundColor: colors.surface2 }]}>
-              <IconSymbol name="drop.fill" size={16} color="#1E88E5" />
+              <IconSymbol name="drop.fill" size={16} color={colors.accent} />
               <Text style={[styles.cycleBadgeText, { color: colors.text }]}>Water</Text>
             </View>
             <View style={[styles.cycleBadge, { backgroundColor: colors.surface2 }]}>
-              <IconSymbol name="trash.fill" size={16} color="#43A047" />
+              <IconSymbol name="trash.fill" size={16} color={colors.accent} />
               <Text style={[styles.cycleBadgeText, { color: colors.text }]}>Waste</Text>
             </View>
             <View style={[styles.cycleBadge, { backgroundColor: colors.surface2 }]}>
-              <IconSymbol name="bolt.fill" size={16} color="#FFA000" />
+              <IconSymbol name="bolt.fill" size={16} color={colors.accent} />
               <Text style={[styles.cycleBadgeText, { color: colors.text }]}>Utilities</Text>
             </View>
           </View>
-          <View style={[styles.cycleGlowCircle, { backgroundColor: 'rgba(107, 203, 119, 0.15)' }]} />
+          <View style={[styles.cycleGlowCircle, { backgroundColor: colors.accentSoft }]} />
         </View>
       ),
     },

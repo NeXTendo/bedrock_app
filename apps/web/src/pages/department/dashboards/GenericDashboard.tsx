@@ -8,8 +8,8 @@ export default function GenericDashboard({ deptCode, deptId }: { deptCode: strin
       deptId={deptId}
       departmentName={`${deptCode} Operations`}
       departmentTagline="Municipal incident management, work order tracking & dispatch center"
-      icon={<LayoutDashboard size={30} />}
-      primaryColor="var(--color-primary)"
+      icon={<LayoutDashboard size={22} />}
+      primaryColor="#0b4b3b"
       accentGradient="from-slate-900 via-slate-800 to-slate-750"
     />
   );

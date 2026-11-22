@@ -1,16 +1,16 @@
-import { useState, useEffect, useRef, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  Shield,
   Eye,
   EyeOff,
-  LogIn,
   AlertCircle,
-  Building2,
-  ChevronDown,
   Lock,
+  Mail,
+  ChevronDown,
+  ArrowRight,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface Department {
@@ -19,13 +19,15 @@ interface Department {
   code: string;
 }
 
-const DEPT_ICONS: Record<string, string> = {
-  ROADS:  '🚧',
-  WATER:  '💧',
-  WASTE:  '♻️',
-  HEALTH: '🏥',
-  ZONING: '🏙️',
-};
+const TEST_ACCOUNTS = [
+  { code: 'ROADS', label: 'Roads Admin', role: 'admin' },
+  { code: 'ROADS', label: 'Roads Staff', role: 'staff' },
+  { code: 'WATER', label: 'Water Admin', role: 'admin' },
+  { code: 'WATER', label: 'Water Staff', role: 'staff' },
+  { code: 'WASTE', label: 'Waste Admin', role: 'admin' },
+  { code: 'HEALTH', label: 'Health Admin', role: 'admin' },
+  { code: 'ZONING', label: 'Zoning Admin', role: 'admin' },
+] as const;
 
 export default function Login() {
   const [departments, setDepartments]     = useState<Department[]>([]);
@@ -35,22 +37,9 @@ export default function Login() {
   const [showPassword, setShowPassword]   = useState(false);
   const [loading, setLoading]             = useState(false);
   const [error, setError]                 = useState<string | null>(null);
-  const [deptOpen, setDeptOpen]           = useState(false);
-  const dropdownRef                       = useRef<HTMLDivElement>(null);
 
   const navigate = useNavigate();
   const { session, profile, isLoading } = useAuth();
-
-  // Close dropdown on click outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setDeptOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   // Fetch departments on mount
   useEffect(() => {
@@ -84,7 +73,7 @@ export default function Login() {
     setError(null);
 
     if (!selectedDept) {
-      setError('Please select your department before signing in.');
+      setError('Please select your assigned department before signing in.');
       return;
     }
 
@@ -114,7 +103,7 @@ export default function Login() {
       .single();
 
     if (profileError || !profileData) {
-      setError('Could not load your profile. Please contact your administrator.');
+      setError('Could not load your departmental credentials. Please contact your system administrator.');
       await supabase.auth.signOut();
       setLoading(false);
       return;
@@ -124,8 +113,7 @@ export default function Login() {
     if (!profileData.department_id) {
       await supabase.auth.signOut();
       setError(
-        'Access denied. This portal is for authorised department staff only. ' +
-        'Citizens cannot sign in here.'
+        'This workspace is for department staff. Citizen reports are submitted through the Bedrock mobile application.'
       );
       setLoading(false);
       return;
@@ -135,263 +123,227 @@ export default function Login() {
     if (profileData.department_id !== selectedDept) {
       await supabase.auth.signOut();
       setError(
-        `Access denied. You are not a member of the ${selectedDeptObj?.name ?? 'selected'} department.`
+        `Department mismatch. Your credentials are not assigned to the ${selectedDeptObj?.name ?? 'selected'} department.`
       );
       setLoading(false);
       return;
     }
 
-    // All checks passed — navigate to the department dashboard
     navigate(`/dept/${selectedDeptObj!.code.toLowerCase()}/dashboard`);
   };
 
+  // Quick fill helper for developers/testers
+  const handleQuickFill = (deptCode: string, userType: 'admin' | 'staff') => {
+    const dept = departments.find(d => d.code === deptCode);
+    if (dept) {
+      setSelectedDept(dept.id);
+      setEmail(`${deptCode.toLowerCase()}.${userType}@lusakacity.gov.zm`);
+      setPassword('Test@12345');
+    }
+  };
+
   return (
-    <div className="min-h-screen flex bg-slate-50 relative overflow-hidden">
-      {/* Decorative background blobs */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-400 rounded-full opacity-10 blur-3xl" />
-        <div className="absolute -bottom-40 -right-40 w-[600px] h-[600px] bg-indigo-500 rounded-full opacity-10 blur-3xl" />
-      </div>
-
-      {/* ─── Left branding panel ─── */}
-      <div className="hidden lg:flex flex-col justify-between w-1/2 p-16 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white relative overflow-hidden">
-        {/* Grid overlay */}
-        <div
-          className="absolute inset-0 opacity-5"
-          style={{
-            backgroundImage:
-              'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)',
-            backgroundSize: '40px 40px',
-          }}
-        />
-
-        {/* Logo */}
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
-              <Shield size={22} />
-            </div>
-            <span className="text-2xl font-extrabold tracking-tight">Bedrock Platform</span>
-          </div>
-          <p className="text-slate-400 text-sm">City Management System</p>
-        </div>
-
-        {/* Quote + Stats */}
-        <div className="relative z-10 space-y-8">
-          <blockquote className="text-2xl font-bold leading-relaxed text-white/90">
-            "Empowering city departments to resolve citizen reports faster, smarter, and together."
-          </blockquote>
-
-          <div className="grid grid-cols-3 gap-4">
-            {[
-              { label: 'Departments',     value: '5'    },
-              { label: 'Avg. Resolution', value: '3.2d' },
-              { label: 'Reports Resolved',value: '12k+' },
-            ].map(stat => (
-              <div key={stat.label} className="bg-white/5 border border-white/10 rounded-xl p-4">
-                <p className="text-2xl font-extrabold text-white">{stat.value}</p>
-                <p className="text-sm text-slate-400 mt-1">{stat.label}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {departments.length > 0
-              ? departments.map(d => (
-                  <span
-                    key={d.id}
-                    className="px-3 py-1 bg-white/10 border border-white/10 text-white/70 rounded-full text-xs font-medium"
-                  >
-                    {DEPT_ICONS[d.code] ?? '🏛️'} {d.name}
-                  </span>
-                ))
-              : ['Roads & Infrastructure', 'Water & Sanitation', 'Waste Management', 'Public Health', 'City Planning'].map(d => (
-                  <span key={d} className="px-3 py-1 bg-white/10 border border-white/10 text-white/70 rounded-full text-xs font-medium">
-                    {d}
-                  </span>
-                ))
-            }
-          </div>
-        </div>
-
-        <p className="relative z-10 text-slate-600 text-xs">© 2025 Bedrock Platform · Government Use Only</p>
-      </div>
-
-      {/* ─── Right login form ─── */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 relative z-10">
-        <div className="w-full max-w-md">
-
-          {/* Mobile branding */}
-          <div className="lg:hidden flex items-center gap-3 mb-10">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-              <Shield size={22} className="text-white" />
-            </div>
-            <div>
-              <p className="text-lg font-extrabold text-slate-900">Bedrock Platform</p>
-              <p className="text-xs text-slate-500">City Management System</p>
-            </div>
-          </div>
-
-          <div className="mb-8">
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Department Sign In</h1>
-            <p className="text-slate-500 mt-2">Select your department and sign in securely.</p>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-5">
-
-            {/* ── Department Selector ── */}
-            <div className="space-y-1.5">
-              <label className="block text-sm font-bold text-slate-700">
-                Department
-              </label>
-              <div className="relative" ref={dropdownRef}>
-                <button
-                  id="dept-select-btn"
-                  type="button"
-                  onClick={() => setDeptOpen(o => !o)}
-                  className={`w-full flex items-center justify-between px-4 py-3 bg-white border rounded-xl text-left shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${
-                    selectedDept ? 'border-slate-300 text-slate-900' : 'border-slate-200 text-slate-400'
-                  }`}
-                >
-                  <span className="flex items-center gap-2.5">
-                    {selectedDeptObj ? (
-                      <>
-                        <span className="text-base">{DEPT_ICONS[selectedDeptObj.code] ?? '🏛️'}</span>
-                        <span className="font-semibold text-slate-800">{selectedDeptObj.name}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Building2 size={16} className="text-slate-400" />
-                        <span>Select your department</span>
-                      </>
-                    )}
-                  </span>
-                  <ChevronDown
-                    size={18}
-                    className={`text-slate-400 transition-transform duration-200 ${deptOpen ? 'rotate-180' : ''}`}
-                  />
-                </button>
-
-                {/* Dropdown list */}
-                {deptOpen && (
-                  <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
-                    {departments.length === 0 ? (
-                      <div className="px-4 py-3 text-sm text-slate-400">Loading departments…</div>
-                    ) : (
-                      departments.map(dept => (
-                        <button
-                          key={dept.id}
-                          type="button"
-                          id={`dept-option-${dept.code.toLowerCase()}`}
-                          onClick={() => {
-                            setSelectedDept(dept.id);
-                            setDeptOpen(false);
-                            setError(null);
-                          }}
-                          className={`w-full flex items-center gap-3 px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-blue-50 ${
-                            selectedDept === dept.id
-                              ? 'bg-blue-50 text-blue-700'
-                              : 'text-slate-700'
-                          }`}
-                        >
-                          <span className="text-base">{DEPT_ICONS[dept.code] ?? '🏛️'}</span>
-                          <div>
-                            <p className="font-semibold">{dept.name}</p>
-                            <p className="text-xs text-slate-400 font-normal">{dept.code}</p>
-                          </div>
-                          {selectedDept === dept.id && (
-                            <span className="ml-auto text-blue-600">✓</span>
-                          )}
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
+    <main className="min-h-screen bg-[#f7f7f2] text-slate-900">
+      <div className="grid min-h-screen lg:grid-cols-[minmax(0,1.05fr)_minmax(460px,.95fr)]">
+        <section className="hidden flex-col justify-between bg-[#07382d] px-10 py-10 text-white lg:flex xl:px-16">
+          <div>
+            <div className="inline-flex h-[72px] items-center rounded-xl bg-[#fbfaf4] px-3">
+              <img src="/bedrock-logo.png" alt="Bedrock" className="h-16 w-36 object-cover" />
             </div>
 
-            {/* ── Email ── */}
-            <div className="space-y-1.5">
-              <label htmlFor="email" className="block text-sm font-bold text-slate-700">
-                Email Address
-              </label>
-              <input
-                id="email"
-                type="email"
-                required
-                autoComplete="email"
-                placeholder="official@cityname.gov.zm"
-                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-              />
+            <div className="mt-16 max-w-xl">
+              <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#f7b45d]">
+                <span className="h-px w-6 bg-[#f58208]" />
+                Community reporting · Operations
+              </p>
+              <h1 className="mt-5 text-4xl font-semibold leading-[1.12] tracking-tight xl:text-5xl">
+                Reports matter.
+                <span className="mt-1 block text-[#f5a43a]">So does what happens next.</span>
+              </h1>
+              <p className="mt-5 max-w-lg text-sm leading-7 text-white/75">
+                Bedrock gives department teams one place to review community reports, coordinate a response, and follow each issue through.
+              </p>
             </div>
 
-            {/* ── Password ── */}
-            <div className="space-y-1.5">
-              <label htmlFor="password" className="block text-sm font-bold text-slate-700">
-                Password
-              </label>
-              <div className="relative">
-                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                  <Lock size={16} />
+            <div className="mt-12 grid max-w-xl grid-cols-3 divide-x divide-white/15 border-y border-white/15 py-5">
+              {[
+                ['01', 'Review', 'Incoming reports'],
+                ['02', 'Coordinate', 'Team response'],
+                ['03', 'Follow through', 'Resolution updates'],
+              ].map(([step, title, detail]) => (
+                <div key={step} className="px-4 first:pl-0 last:pr-0">
+                  <span className="text-[10px] font-semibold tracking-widest text-[#f7b45d]">{step}</span>
+                  <p className="mt-2 text-sm font-semibold text-white">{title}</p>
+                  <p className="mt-1 text-[11px] leading-5 text-white/60">{detail}</p>
                 </div>
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  autoComplete="current-password"
-                  placeholder="••••••••••"
-                  className="w-full pl-10 pr-12 py-3 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors"
-                >
-                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 border-t border-white/15 pt-5 text-xs text-white/60">
+            <span>A better community, together.</span>
+            <span className="flex items-center gap-2">
+              <span>Report</span>
+              <span className="text-[#f58208]">·</span>
+              <span>Track</span>
+              <span className="text-[#f58208]">·</span>
+              <span>Improve</span>
+            </span>
+          </div>
+        </section>
+
+        <section className="flex min-h-screen items-center justify-center px-5 py-10 sm:px-8 lg:px-12">
+          <div className="w-full max-w-[430px]">
+            <div className="mb-10 flex items-center gap-4 lg:hidden">
+              <div className="inline-flex h-14 items-center rounded-lg bg-white px-2 shadow-sm">
+                <img src="/bedrock-logo.png" alt="Bedrock" className="h-12 w-28 object-cover" />
               </div>
+              <span className="text-xs font-medium tracking-wide text-slate-500">Department workspace</span>
             </div>
 
-            {/* ── Error ── */}
+            <div className="mb-8">
+              <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#0b4b3b]">
+                <span className="h-px w-5 bg-[#f58208]" />
+                Workspace access
+              </p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-[#15352b]">Welcome back</h2>
+              <p className="mt-2 max-w-sm text-sm leading-6 text-slate-600">
+                Select your department and sign in with your work credentials.
+              </p>
+            </div>
+
             {error && (
-              <div className="flex items-start gap-3 bg-red-50 border border-red-200 text-red-700 text-sm font-medium p-4 rounded-xl">
-                <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
-                <p>{error}</p>
+              <div className="mb-6 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                <AlertCircle size={17} className="mt-0.5 shrink-0 text-red-600" />
+                <div className="leading-6">{error}</div>
               </div>
             )}
 
-            {/* ── Submit ── */}
-            <button
-              id="login-submit-btn"
-              type="submit"
-              disabled={loading || !selectedDept}
-              className="w-full flex items-center justify-center gap-2 py-3 px-6 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-base font-bold rounded-xl shadow-lg shadow-blue-500/25 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              {loading ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Verifying access…</span>
-                </>
-              ) : (
-                <>
-                  <LogIn size={20} />
-                  <span>Sign In to Platform</span>
-                </>
-              )}
-            </button>
-          </form>
+            <form onSubmit={handleLogin} className="space-y-5">
+              <div className="space-y-2">
+                <label htmlFor="department" className="block text-sm font-medium text-slate-700">
+                  Department
+                </label>
+                <div className="relative">
+                  <select
+                    id="department"
+                    value={selectedDept}
+                    onChange={e => setSelectedDept(e.target.value)}
+                    className="h-12 w-full appearance-none rounded-md border border-[#d6ded5] bg-white px-3.5 pr-10 text-sm text-slate-900 shadow-sm outline-none transition focus:border-[#0b4b3b] focus:ring-2 focus:ring-[#0b4b3b]/15"
+                  >
+                    <option value="">Choose your department</option>
+                    {departments.map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                </div>
+              </div>
 
-          <p className="mt-8 text-center text-xs text-slate-400 leading-relaxed">
-            This is a secure government system. Unauthorised access is a criminal offence.<br />
-            All sessions are logged and monitored.
-          </p>
-        </div>
+              <div className="space-y-2">
+                <label htmlFor="email" className="block text-sm font-medium text-slate-700">
+                  Work email
+                </label>
+                <div className="relative">
+                  <Mail size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="email"
+                    type="email"
+                    autoComplete="username"
+                    required
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    placeholder="you@organization.com"
+                    className="h-12 w-full rounded-md border border-[#d6ded5] bg-white pl-10 pr-3.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#0b4b3b] focus:ring-2 focus:ring-[#0b4b3b]/15"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    className="h-12 w-full rounded-md border border-[#d6ded5] bg-white pl-10 pr-11 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-[#0b4b3b] focus:ring-2 focus:ring-[#0b4b3b]/15"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPassword}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 transition hover:text-[#0b4b3b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0b4b3b]"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-md bg-[#0b4b3b] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#07382d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0b4b3b] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white" />
+                    <span>Signing in…</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Continue to workspace</span>
+                    <ArrowRight size={16} className="text-[#f7b45d]" />
+                  </>
+                )}
+              </button>
+            </form>
+
+            <p className="mt-5 flex items-center gap-2 text-xs leading-5 text-slate-500">
+              <ShieldCheck size={15} className="shrink-0 text-[#0b4b3b]" />
+              Access is limited to staff assigned to a department workspace.
+            </p>
+
+            {import.meta.env.DEV && (
+              <div className="mt-8 border-t border-[#e1e5dc] pt-5">
+                <details className="group text-xs">
+                  <summary className="flex cursor-pointer list-none items-center justify-between py-1 font-medium text-slate-500 transition hover:text-[#0b4b3b]">
+                    <span>Developer test accounts</span>
+                    <ChevronDown size={14} className="text-slate-400 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="mt-3 space-y-3 rounded-lg border border-[#e1e5dc] bg-white/70 p-3">
+                    <p className="text-[11px] leading-5 text-slate-500">
+                      Select a test account to fill the sign-in form. Password:{' '}
+                      <code className="rounded bg-[#f0f3ed] px-1.5 py-0.5 font-mono text-slate-700">Test@12345</code>
+                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {TEST_ACCOUNTS.map(account => (
+                        <button
+                          key={`${account.code}-${account.role}`}
+                          type="button"
+                          onClick={() => handleQuickFill(account.code, account.role)}
+                          className="truncate rounded border border-[#e1e5dc] bg-white px-2.5 py-2 text-left text-[11px] font-medium text-slate-600 transition hover:border-[#b8ccbc] hover:text-[#0b4b3b]"
+                        >
+                          {account.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </details>
+              </div>
+            )}
+          </div>
+        </section>
       </div>
-
-    </div>
+    </main>
   );
 }

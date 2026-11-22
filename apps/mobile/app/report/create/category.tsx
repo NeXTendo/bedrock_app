@@ -1,7 +1,8 @@
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useReportStore } from '@/stores/reportStore';
-import { theme } from '@/constants/theme';
+import { useAppColors } from '@/hooks/useAppColors';
+import { getCategoryColor } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { supabase } from '@/lib/supabase';
 import { useEffect, useState } from 'react';
@@ -16,6 +17,7 @@ interface Category {
 export default function CategoryStepScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const colors = useAppColors();
   const { setDraft } = useReportStore();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,43 +42,44 @@ export default function CategoryStepScreen() {
     fetchCategories();
   }, []);
 
-  const handleSelect = (categoryId: string) => {
-    setDraft({ category: categoryId });
+  const handleSelect = (category: Category) => {
+    setDraft({ category: category.id, categoryName: category.name });
     router.push('/report/create/review');
   };
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: colors.background }]}>
         <TouchableOpacity 
           onPress={() => router.back()}
           style={styles.backButton}
         >
-          <IconSymbol name="chevron.right" color={theme.colors.text} size={24} style={{ transform: [{ rotate: '180deg' }] }} />
+          <IconSymbol name="chevron.left" color={colors.text} size={22} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Select Category</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Choose a category</Text>
         <View style={{ width: 44 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.subtitle}>What kind of issue are you reporting?</Text>
+        <Text style={[styles.subtitle, { color: colors.textDim }]}>Select the category that best describes the issue.</Text>
         
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={theme.colors.accent} />
+            <ActivityIndicator size="large" color={colors.accent} />
           </View>
         ) : (
-          <View style={styles.grid}>
+          <View style={styles.list}>
             {categories.map((cat) => (
               <TouchableOpacity 
                 key={cat.id} 
-                style={styles.card}
-                onPress={() => handleSelect(cat.id)}
+                style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => handleSelect(cat)}
               >
-                <View style={styles.iconContainer}>
-                  <IconSymbol name="plus.circle.fill" color={theme.colors.accent} size={32} />
+                <View style={[styles.iconContainer, { backgroundColor: `${getCategoryColor(cat.icon, colors)}20` }]}>
+                  <IconSymbol name={(cat.icon || 'mappin.and.ellipse') as any} color={getCategoryColor(cat.icon, colors)} size={20} />
                 </View>
-                <Text style={styles.cardName}>{cat.name}</Text>
+                <Text style={[styles.cardName, { color: colors.text }]}>{cat.name}</Text>
+                <IconSymbol name="chevron.right" color={colors.textDim} size={14} />
               </TouchableOpacity>
             ))}
           </View>
@@ -89,7 +92,7 @@ export default function CategoryStepScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: '#F4F2EA',
   },
   header: {
     paddingHorizontal: 20,
@@ -97,7 +100,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: theme.colors.bg,
+    backgroundColor: '#F4F2EA',
   },
   backButton: {
     width: 44,
@@ -106,8 +109,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   headerTitle: {
-    color: theme.colors.text,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
   },
   loadingContainer: {
@@ -118,33 +120,33 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   subtitle: {
-    color: theme.colors.textDim,
-    fontSize: 16,
-    marginBottom: 24,
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 18,
   },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
+  list: {
+    gap: 10,
   },
   card: {
-    backgroundColor: theme.colors.surface,
-    width: '47%',
-    aspectRatio: 1,
+    minHeight: 68,
     borderRadius: 16,
-    padding: 20,
-    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: theme.colors.border,
+    gap: 13,
   },
   iconContainer: {
-    marginBottom: 12,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardName: {
-    color: theme.colors.text,
-    textAlign: 'center',
+    flex: 1,
     fontWeight: '600',
-    fontSize: 13,
+    fontSize: 15,
   },
 });

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -56,10 +56,6 @@ export default function ClusterDetailScreen() {
   const totalCount = selectedClusterReports.length;
   const categoryKey = (clusterTitle.toLowerCase() as keyof typeof CATEGORY_ICONS);
   const categoryIcon = CATEGORY_ICONS[categoryKey] ?? 'flame.fill';
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab]);
 
   // Metrics computation
   const metrics = useMemo(() => {
@@ -132,20 +128,20 @@ export default function ClusterDetailScreen() {
   /* ── List Header ─────────────────────────────────────────────────── */
   const renderHeader = () => (
     <View style={styles.headerWrapper}>
-      {/* Visual thermal hero banner */}
+      {/* Cluster summary */}
       <View style={[styles.heroCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <LinearGradient
-          colors={[accentColor + '30', accentColor + '08', 'transparent']}
+          colors={[accentColor + '20', accentColor + '06', 'transparent']}
           style={StyleSheet.absoluteFill}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
         />
 
         <View style={styles.heroTopRow}>
-          <View style={[styles.categoryBadge, { backgroundColor: accentColor + '25', borderColor: accentColor + '60' }]}>
+          <View style={[styles.categoryBadge, { backgroundColor: accentColor + '18', borderColor: accentColor + '40' }]}>
             <IconSymbol name={categoryIcon as any} size={12} color={accentColor} />
             <Text style={[styles.categoryBadgeText, { color: accentColor }]}>
-              {clusterTitle.toUpperCase()} ZONE RADAR
+              {clusterTitle} hotspot
             </Text>
           </View>
 
@@ -160,49 +156,51 @@ export default function ClusterDetailScreen() {
         </View>
 
         <Text style={[styles.heroTitle, { color: colors.text }]}>
-          {totalCount} Incident{totalCount !== 1 ? 's' : ''} in Cluster
+          {totalCount} {totalCount === 1 ? 'report' : 'reports'} in this area
         </Text>
         <Text style={[styles.heroSubtitle, { color: colors.textDim }]}>
-          High density of citizen reports concentrated within ~250m radius
+          Related community reports grouped by location.
         </Text>
 
-        {/* Telemetry Metrics Strip */}
+        {/* Cluster summary metrics */}
         <View style={[styles.metricsStrip, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
           <View style={styles.metricItem}>
             <Text style={[styles.metricValue, { color: colors.error }]}>{metrics.openCount}</Text>
-            <Text style={[styles.metricLabel, { color: colors.textDim }]}>OPEN</Text>
+            <Text style={[styles.metricLabel, { color: colors.textDim }]}>Open</Text>
           </View>
           <View style={[styles.metricDivider, { backgroundColor: colors.border }]} />
           <View style={styles.metricItem}>
             <Text style={[styles.metricValue, { color: colors.warning }]}>{metrics.inProgress}</Text>
-            <Text style={[styles.metricLabel, { color: colors.textDim }]}>DISPATCHED</Text>
+            <Text style={[styles.metricLabel, { color: colors.textDim }]}>In progress</Text>
           </View>
           <View style={[styles.metricDivider, { backgroundColor: colors.border }]} />
           <View style={styles.metricItem}>
             <Text style={[styles.metricValue, { color: colors.success }]}>{metrics.resolved}</Text>
-            <Text style={[styles.metricLabel, { color: colors.textDim }]}>RESOLVED</Text>
+            <Text style={[styles.metricLabel, { color: colors.textDim }]}>Resolved</Text>
           </View>
           <View style={[styles.metricDivider, { backgroundColor: colors.border }]} />
           <View style={styles.metricItem}>
             <Text style={[styles.metricValue, { color: colors.text }]}>{metrics.totalConfirmations}</Text>
-            <Text style={[styles.metricLabel, { color: colors.textDim }]}>VOTES</Text>
+            <Text style={[styles.metricLabel, { color: colors.textDim }]}>Confirmations</Text>
           </View>
         </View>
 
         {/* Category breakdown chips */}
         {metrics.categoriesList.length > 0 && (
-          <View style={styles.categoryChipsRow}>
-            {metrics.categoriesList.map((cat, idx) => (
-              <View key={idx} style={[styles.catChip, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.catChipText, { color: colors.text }]}>
-                  {cat.name}: <Text style={{ color: accentColor, fontWeight: '800' }}>{cat.count}</Text>
-                </Text>
-              </View>
-            ))}
+          <View style={styles.categoryBreakdown}>
+            <Text style={[styles.breakdownTitle, { color: colors.textDim }]}>Issue types</Text>
+            <View style={styles.categoryChipsRow}>
+              {metrics.categoriesList.map((cat, idx) => (
+                <View key={idx} style={[styles.catChip, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <Text style={[styles.catChipText, { color: colors.text }]}>
+                    {cat.name} <Text style={{ color: accentColor, fontWeight: '700' }}>{cat.count}</Text>
+                  </Text>
+                </View>
+              ))}
+            </View>
           </View>
         )}
 
-        {/* Hotspot Alert Subscription Button */}
         <TouchableOpacity
           style={[
             styles.followButton,
@@ -225,7 +223,7 @@ export default function ClusterDetailScreen() {
               { color: isFollowing ? colors.text : '#FFFFFF' },
             ]}
           >
-            {isFollowing ? 'SUBSCRIBED TO HOTSPOT ALERTS' : 'MONITOR THIS SECTOR'}
+            {isFollowing ? 'Following hotspot' : 'Follow hotspot'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -237,11 +235,12 @@ export default function ClusterDetailScreen() {
           onPress={() => {
             if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setActiveTab('all');
+            setCurrentPage(1);
           }}
           activeOpacity={0.7}
         >
           <Text style={[styles.tabText, { color: activeTab === 'all' ? colors.text : colors.textDim }]}>
-            ALL ({totalCount})
+            All <Text style={[styles.tabCount, { color: activeTab === 'all' ? colors.accent : colors.textDim }]}>{totalCount}</Text>
           </Text>
         </TouchableOpacity>
 
@@ -250,11 +249,12 @@ export default function ClusterDetailScreen() {
           onPress={() => {
             if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setActiveTab('open');
+            setCurrentPage(1);
           }}
           activeOpacity={0.7}
         >
           <Text style={[styles.tabText, { color: activeTab === 'open' ? colors.text : colors.textDim }]}>
-            UNRESOLVED ({metrics.openCount + metrics.inProgress})
+            Open <Text style={[styles.tabCount, { color: activeTab === 'open' ? colors.accent : colors.textDim }]}>{metrics.openCount + metrics.inProgress}</Text>
           </Text>
         </TouchableOpacity>
 
@@ -263,19 +263,19 @@ export default function ClusterDetailScreen() {
           onPress={() => {
             if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setActiveTab('resolved');
+            setCurrentPage(1);
           }}
           activeOpacity={0.7}
         >
           <Text style={[styles.tabText, { color: activeTab === 'resolved' ? colors.text : colors.textDim }]}>
-            RESOLVED ({metrics.resolved})
+            Resolved <Text style={[styles.tabCount, { color: activeTab === 'resolved' ? colors.accent : colors.textDim }]}>{metrics.resolved}</Text>
           </Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.gridSectionHeading}>
-        <Text style={[styles.gridHeadingText, { color: colors.textDim }]}>
-          HOTSPOT INCIDENT GRID ({totalFilteredCount})
-        </Text>
+        <Text style={[styles.gridHeadingText, { color: colors.text }]}>Reports</Text>
+        <Text style={[styles.gridCountText, { color: colors.textDim }]}>{totalFilteredCount}</Text>
       </View>
     </View>
   );
@@ -285,8 +285,6 @@ export default function ClusterDetailScreen() {
       <PaginationControl
         currentPage={currentPage}
         totalPages={totalPages}
-        totalItems={totalFilteredCount}
-        pageSize={PAGE_SIZE}
         onPageChange={setCurrentPage}
       />
     </View>
@@ -315,7 +313,7 @@ export default function ClusterDetailScreen() {
         </TouchableOpacity>
 
         <View style={styles.topBarCenter}>
-          <Text style={[styles.topBarSubtitle, { color: colors.textDim }]}>SPATIAL INTELLIGENCE</Text>
+          <Text style={[styles.topBarSubtitle, { color: colors.textDim }]}>REPORT CLUSTER</Text>
           <Text style={[styles.topBarTitle, { color: colors.text }]} numberOfLines={1}>
             {clusterTitle} Cluster
           </Text>
@@ -374,7 +372,7 @@ const styles = StyleSheet.create({
   actionBtn: {
     width: 36,
     height: 36,
-    borderRadius: 4,
+    borderRadius: 18,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -404,10 +402,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
   },
   heroCard: {
-    borderRadius: 4,
+    borderRadius: 18,
     borderWidth: 1,
-    padding: 14,
-    marginBottom: 10,
+    padding: 16,
+    marginBottom: 12,
     overflow: 'hidden',
   },
   heroTopRow: {
@@ -422,7 +420,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 2,
+    borderRadius: 10,
     borderWidth: 1,
   },
   categoryBadgeText: {
@@ -436,7 +434,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 2,
+    borderRadius: 10,
     borderWidth: 1,
   },
   coordText: {
@@ -445,8 +443,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   heroTitle: {
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: 21,
+    fontWeight: '700',
     letterSpacing: -0.5,
     marginBottom: 4,
   },
@@ -459,89 +457,105 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    paddingVertical: 8,
-    borderRadius: 4,
+    paddingVertical: 12,
+    borderRadius: 14,
     borderWidth: 1,
     marginBottom: 10,
   },
   metricItem: {
     alignItems: 'center',
+    flex: 1,
   },
   metricValue: {
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: '700',
   },
   metricLabel: {
-    fontSize: 8,
-    fontWeight: '800',
-    letterSpacing: 0.6,
+    fontSize: 9,
+    fontWeight: '600',
     marginTop: 2,
+    textAlign: 'center',
   },
   metricDivider: {
     width: 1,
-    height: 18,
+    height: 26,
+  },
+  categoryBreakdown: {
+    marginBottom: 12,
+  },
+  breakdownTitle: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 6,
   },
   categoryChipsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 5,
-    marginBottom: 12,
+    gap: 6,
   },
   catChip: {
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 2,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 10,
     borderWidth: 1,
   },
   catChipText: {
-    fontSize: 10,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '500',
   },
   followButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 9,
-    borderRadius: 4,
+    paddingVertical: 11,
+    borderRadius: 12,
     borderWidth: 1,
   },
   followButtonText: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    fontSize: 12,
+    fontWeight: '600',
   },
   tabBarContainer: {
     flexDirection: 'row',
-    padding: 2,
-    borderRadius: 4,
+    padding: 4,
+    borderRadius: 13,
     borderWidth: 1,
-    marginBottom: 8,
+    marginBottom: 12,
   },
   tabBtn: {
     flex: 1,
-    paddingVertical: 6,
+    paddingVertical: 9,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 2,
+    borderRadius: 9,
   },
   tabBtnActive: {
     // dynamically styled
   },
   tabText: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  tabCount: {
+    fontSize: 11,
+    fontWeight: '700',
   },
   gridSectionHeading: {
-    marginTop: 4,
-    marginBottom: 4,
-    paddingHorizontal: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: 2,
+    marginBottom: 8,
+    paddingHorizontal: 4,
   },
   gridHeadingText: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.8,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  gridCountText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   footerContainer: {
     marginTop: 6,

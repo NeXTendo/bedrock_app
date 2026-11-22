@@ -153,12 +153,12 @@ export default function ProfileScreen() {
           </View>
           <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
           <View style={styles.statItem}>
-            <Text style={[styles.statValue, { color: colors.success }]}>{stats?.resolved || 0}</Text>
+            <Text style={[styles.statValue, { color: colors.text }]}>{stats?.resolved || 0}</Text>
             <Text style={[styles.statLabel, { color: colors.textDim }]}>Resolved</Text>
           </View>
           <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
           <View style={styles.statItem}>
-            <Text style={[styles.statValue, { color: colors.accent }]}>{profile?.xp_points || 0}</Text>
+            <Text style={[styles.statValue, { color: colors.highlight }]}>{profile?.xp_points || 0}</Text>
             <Text style={[styles.statLabel, { color: colors.textDim }]}>XP</Text>
           </View>
         </View>

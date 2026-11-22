@@ -5,7 +5,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { supabase } from '../../lib/supabase';
 import {
   LogOut, LayoutDashboard, FileText, Map, Users, Menu, X, Loader2,
-  Search, ShieldCheck, ChevronRight
+  Search, ShieldCheck, Building2, ChevronRight, UserRound
 } from 'lucide-react';
 import NotificationTray from './NotificationTray';
 
@@ -66,204 +66,205 @@ export default function DepartmentLayout() {
   };
 
   const navLinks = [
-    { name: 'Command Center', path: `/dept/${deptCode}/dashboard`, icon: LayoutDashboard },
-    { name: 'Incident Reports', path: `/dept/${deptCode}/reports`, icon: FileText },
-    { name: 'Geospatial Map', path: `/dept/${deptCode}/map`, icon: Map },
+    { name: 'Dashboard', path: `/dept/${deptCode}/dashboard`, icon: LayoutDashboard },
+    { name: 'Reports', path: `/dept/${deptCode}/reports`, icon: FileText },
+    { name: 'Map View', path: `/dept/${deptCode}/map`, icon: Map },
   ];
 
   if (profile?.role === 'admin') {
-    navLinks.push({ name: 'Personnel & Teams', path: `/dept/${deptCode}/team`, icon: Users });
+    navLinks.push({ name: 'Staff', path: `/dept/${deptCode}/team`, icon: UserRound });
+    navLinks.push({ name: 'Teams', path: `/dept/${deptCode}/teams`, icon: Users });
   }
 
-  // Show a full-screen spinner while auth state resolves
+  // Get active page name for breadcrumb
+  const isLinkActive = (path: string) => location.pathname === path || location.pathname.startsWith(`${path}/`);
+  const currentNav = navLinks.find(link => isLinkActive(link.path))?.name || 'Dashboard';
+
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
-        <div className="flex flex-col items-center gap-4 text-slate-400">
-          <Loader2 size={40} className="animate-spin text-primary" />
-          <p className="text-sm font-semibold tracking-tight">Initializing Command Center…</p>
+        <div className="flex flex-col items-center gap-3 text-slate-500">
+          <Loader2 size={32} className="animate-spin text-primary" />
+          <p className="text-sm font-medium">Loading department portal…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden relative">
+    <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden">
       {/* Mobile Top Bar */}
-      <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white/95 backdrop-blur-md border-b border-slate-200 z-30 px-4 flex items-center justify-between shadow-xs">
+      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b border-slate-200 z-30 px-4 flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <button onClick={() => setIsMobileOpen(true)} className="p-2 -ml-2 text-slate-600 hover:text-primary rounded-xl focus:outline-none">
-            <Menu size={22} />
+          <button
+            onClick={() => setIsMobileOpen(true)}
+            className="p-1.5 -ml-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg"
+          >
+            <Menu size={20} />
           </button>
           <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-primary text-white rounded-xl flex items-center justify-center shadow-sm">
-              <LayoutDashboard size={16} />
+            <div className="w-7 h-7 bg-primary text-white rounded-lg flex items-center justify-center">
+              <Building2 size={15} />
             </div>
-            <span className="font-black text-slate-900 text-sm truncate max-w-[160px]">{deptName}</span>
+            <span className="font-semibold text-slate-900 text-sm truncate max-w-[160px]">{deptName}</span>
           </div>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2">
           <NotificationTray />
-          <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden border border-slate-300">
-            {profile?.avatar_url ? (
-              <img src={profile.avatar_url} alt="avatar" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-slate-600 font-bold text-xs">
-                {profile?.full_name?.charAt(0) || 'U'}
-              </div>
-            )}
+          <div className="w-7 h-7 rounded-full bg-slate-200 overflow-hidden flex items-center justify-center text-xs font-semibold text-slate-700">
+            {profile?.full_name?.charAt(0) || 'U'}
           </div>
         </div>
       </div>
 
-      {/* Mobile Sidebar Backdrop */}
+      {/* Mobile Backdrop */}
       {isMobileOpen && (
         <div
-          className="md:hidden fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-40 transition-opacity"
+          className="md:hidden fixed inset-0 bg-slate-900/50 z-40 transition-opacity"
           onClick={() => setIsMobileOpen(false)}
         />
       )}
 
-      {/* Sidebar (Desktop & Mobile) */}
+      {/* Left Sidebar */}
       <aside className={`
-        fixed md:relative top-0 left-0 h-full w-72 bg-white border-r border-slate-200/80 flex flex-col z-50 transform transition-transform duration-300 ease-in-out shadow-2xl md:shadow-none
-        ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        fixed md:relative top-0 left-0 h-full w-64 bg-white border-r border-slate-200 flex flex-col z-50 transform transition-transform duration-200 ease-in-out
+        ${isMobileOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full md:translate-x-0'}
       `}>
-        {/* Brand Department Identity */}
-        <div className="p-6 flex flex-col relative bg-slate-50/50 border-b border-slate-100">
-          <button
-            className="md:hidden absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-lg"
-            onClick={() => setIsMobileOpen(false)}
-          >
-            <X size={20} />
-          </button>
-
-          <div className="flex items-center space-x-3 mb-2">
-            <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary-dark text-white rounded-2xl flex items-center justify-center shadow-lg shadow-primary/25">
-              <LayoutDashboard size={24} />
+        {/* Brand / Municipal Identity */}
+        <div className="p-5 border-b border-slate-200">
+          <div className="flex items-center justify-between">
+            <div className="min-w-0">
+              <img
+                src="/bedrock-logo.png"
+                alt="Bedrock"
+                className="h-12 w-40 object-cover object-center"
+              />
+              <p className="mt-1 text-[11px] font-medium tracking-wide text-slate-500">
+                Community Reporting Survey
+              </p>
             </div>
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-primary">Municipal Portal</span>
-              <h2 className="text-base font-black text-slate-900 leading-tight">
-                {deptName}
-              </h2>
-            </div>
+            <button
+              className="md:hidden p-1.5 text-slate-400 hover:text-slate-600 rounded-md"
+              onClick={() => setIsMobileOpen(false)}
+            >
+              <X size={18} />
+            </button>
           </div>
-          <div className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60 w-fit">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 glow-pulse" />
-            <span>Operational · Realtime</span>
+
+          {/* Department Badge */}
+          <div className="mt-3.5 px-2.5 py-1.5 bg-[#f0f6f0] border border-[#dce9dd] rounded-lg flex items-center justify-between">
+            <div className="flex items-center space-x-2 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-[#f58208] shrink-0" />
+              <span className="text-xs font-semibold text-slate-800 truncate">{deptName}</span>
+            </div>
+            <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-white text-slate-500 border border-slate-200 shrink-0">
+              {deptCode?.toUpperCase()}
+            </span>
           </div>
         </div>
 
         {/* Navigation Menu */}
-        <nav className="flex-1 px-3 py-6 space-y-1.5 overflow-y-auto">
-          <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-3">
-            Operations Menu
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          <div className="px-3 pb-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+            Workspace
           </div>
           {navLinks.map((link) => {
             const Icon = link.icon;
-            const isActive = location.pathname.startsWith(link.path);
+            const isActive = isLinkActive(link.path);
 
             return (
               <Link
                 key={link.name}
                 to={link.path}
                 onClick={() => setIsMobileOpen(false)}
-                className={`flex items-center justify-between px-3.5 py-3 rounded-2xl font-bold text-sm transition-all duration-200 group
+                className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors
                   ${isActive
-                    ? 'bg-primary text-white shadow-md shadow-primary/25'
-                    : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900'
+                    ? 'bg-[#eaf3eb] text-[#07382d] font-semibold'
+                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                   }
                 `}
               >
                 <div className="flex items-center space-x-3">
-                  <Icon size={19} className={isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'} />
+                  <Icon
+                    size={17}
+                    className={isActive ? 'text-[#0b4b3b]' : 'text-slate-400'}
+                  />
                   <span>{link.name}</span>
                 </div>
-                {isActive && <ChevronRight size={16} className="text-white/80" />}
+                {isActive && <ChevronRight size={14} className="text-slate-400" />}
               </Link>
             );
           })}
         </nav>
 
-        {/* User Card & Sign Out */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50/40">
-          <div className="flex items-center space-x-3 mb-3.5 p-2 rounded-xl bg-white border border-slate-100 shadow-xs">
-            <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary font-black text-sm flex items-center justify-center shrink-0 border border-primary/20">
-              {profile?.avatar_url ? (
-                <img src={profile.avatar_url} alt="avatar" className="w-full h-full object-cover rounded-xl" />
-              ) : (
-                profile?.full_name?.charAt(0) || 'U'
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-black text-slate-900 truncate">
-                {profile?.full_name || 'Staff User'}
-              </p>
-              <p className="text-[10px] text-slate-400 truncate capitalize font-semibold flex items-center gap-1">
-                <ShieldCheck size={11} className="text-primary" />
-                {profile?.role}
-              </p>
+        {/* User Footer */}
+        <div className="p-3 border-t border-slate-200 bg-slate-50/50">
+          <div className="p-2.5 bg-white border border-slate-200 rounded-lg flex items-center justify-between shadow-2xs mb-2">
+            <div className="flex items-center space-x-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-slate-100 text-slate-700 font-semibold text-xs flex items-center justify-center shrink-0 border border-slate-200">
+                {profile?.full_name?.charAt(0) || 'U'}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-slate-900 truncate">
+                  {profile?.full_name || 'Staff User'}
+                </p>
+                <div className="flex items-center gap-1 text-[11px] text-slate-500 capitalize">
+                  <ShieldCheck size={12} className="text-primary" />
+                  <span>{profile?.role || 'Staff'}</span>
+                </div>
+              </div>
             </div>
           </div>
+
           <button
             onClick={handleLogout}
-            className="w-full flex items-center justify-center space-x-2 px-3 py-2 text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all shadow-xs"
+            className="w-full flex items-center justify-center space-x-2 px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-red-700 hover:bg-red-50 rounded-lg border border-transparent transition-colors"
           >
-            <LogOut size={15} />
-            <span>Sign Out Workspace</span>
+            <LogOut size={14} />
+            <span>Sign Out</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-hidden bg-slate-50/50 relative flex flex-col pt-16 md:pt-0">
-        {/* Desktop Header with Global Search & Status */}
-        <header className="hidden md:flex h-16 bg-white border-b border-slate-200/70 items-center justify-between px-8 shrink-0 relative z-20 shadow-xs">
-          {/* Left Breadcrumbs / Title */}
-          <div className="flex items-center space-x-2 text-xs font-medium text-slate-500">
-            <span className="text-slate-400">Lusaka City Council</span>
-            <span>/</span>
-            <span className="font-bold text-slate-800">{deptName}</span>
+      <main className="flex-1 overflow-hidden bg-[#f7f7f2] flex flex-col pt-14 md:pt-0">
+        {/* Top Header */}
+        <header className="hidden md:flex h-14 bg-white border-b border-slate-200 items-center justify-between px-6 shrink-0 z-20">
+          {/* Breadcrumbs */}
+          <div className="flex items-center space-x-2 text-xs text-slate-500">
+            <span>Bedrock</span>
+            <span className="text-slate-300">/</span>
+            <span className="text-slate-700 font-medium">{deptName}</span>
+            <span className="text-slate-300">/</span>
+            <span className="text-slate-900 font-semibold">{currentNav}</span>
           </div>
 
-          {/* Center Search Input */}
-          <form onSubmit={handleSearchSubmit} className="relative w-96">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+          {/* Search Box */}
+          <form onSubmit={handleSearchSubmit} className="relative w-80">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
             <input
               type="text"
               value={globalSearch}
               onChange={e => setGlobalSearch(e.target.value)}
-              placeholder="Search reports by ID, location, or issue description..."
-              className="w-full pl-9 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-inner"
+              placeholder="Search reports by ID, street, or keyword..."
+              className="w-full pl-8 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs placeholder-slate-400 focus:outline-none focus:bg-white focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
             />
           </form>
 
-          {/* Right Notifications & Profile */}
+          {/* Right Status & Notifications */}
           <div className="flex items-center space-x-4">
-            <NotificationTray />
-            <div className="w-[1px] h-5 bg-slate-200" />
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden border border-slate-300 shadow-sm">
-                {profile?.avatar_url ? (
-                  <img src={profile.avatar_url} alt="avatar" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-slate-600 font-black text-xs">
-                    {profile?.full_name?.charAt(0) || 'U'}
-                  </div>
-                )}
-              </div>
-              <div className="text-left">
-                <p className="text-xs font-black text-slate-900 leading-none">{profile?.full_name || 'Staff User'}</p>
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{profile?.role}</p>
-              </div>
+            <div className="flex items-center space-x-1.5 text-xs text-slate-500">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="font-medium text-slate-600">Operational</span>
             </div>
+            <div className="w-[1px] h-4 bg-slate-200" />
+            <NotificationTray />
           </div>
         </header>
 
-        {/* Content Body */}
-        <div className="flex-1 overflow-auto relative">
-          <div className="max-w-7xl mx-auto p-4 md:p-8 lg:p-10 relative z-10">
+        {/* Scrollable Page Body */}
+        <div className="flex-1 overflow-auto">
+          <div className="max-w-7xl mx-auto p-4 md:p-6 lg:p-8">
             <Outlet />
           </div>
         </div>

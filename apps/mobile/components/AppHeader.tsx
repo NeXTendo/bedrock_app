@@ -58,9 +58,9 @@ export function AppHeader({
           backgroundColor: isFloating 
             ? (showBlur ? 'transparent' : colors.surface) 
             : colors.background,
-          borderRadius: isFloating ? 14 : 0,
+          borderRadius: isFloating ? 18 : 0,
           borderColor: colors.border,
-          borderBottomWidth: isFloating ? 0 : 1,
+          borderBottomWidth: isFloating ? 0 : StyleSheet.hairlineWidth,
           borderBottomColor: colors.border,
         }
       ]}
@@ -116,22 +116,20 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 12,
+        shadowColor: '#25291F',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.09,
+        shadowRadius: 10,
       },
-      android: {
-        elevation: 6,
-      },
+      android: { elevation: 3 },
     }),
   },
   content: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingHorizontal: 20,
+    paddingBottom: 14,
   },
   left: {
     flex: 1,
@@ -142,21 +140,21 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: -0.3,
+    fontSize: 20,
+    fontWeight: '600',
+    letterSpacing: -0.4,
   },
   subtitle: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '500',
     letterSpacing: 0,
     marginBottom: 1,
   },
   iconButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    borderWidth: 1,
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    borderWidth: 0,
     justifyContent: 'center',
     alignItems: 'center',
   },

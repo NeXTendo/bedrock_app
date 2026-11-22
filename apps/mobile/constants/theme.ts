@@ -1,95 +1,86 @@
-/**
- * Warm Amber Theme — earthy, civic, readable.
- * Zinc base with amber accent pops for a grounded premium feel.
- */
-
 import { Platform } from 'react-native';
 
-const palette = {
-  zinc: {
-    50:  '#fafafa',
-    100: '#f4f4f5',
-    200: '#e4e4e7',
-    300: '#d4d4d8',
-    400: '#a1a1aa',
-    500: '#71717a',
-    600: '#52525b',
-    700: '#3f3f46',
-    800: '#27272a',
-    900: '#18181b',
-    950: '#0c0c0e',
-  },
-  amber: {
-    300: '#fcd34d',
-    400: '#fbbf24',
-    500: '#f59e0b',
-    600: '#d97706',
-    700: '#b45309',
-    800: '#92400e',
-  },
-};
-
 const darkColors = {
-  background:  palette.zinc[950],
-  bg:          palette.zinc[950],
-  surface:     '#141417',            // slightly warmer than zinc[900]
-  surface2:    palette.zinc[800],
-  border:      '#2a2a2e',            // subtle warm border
-  text:        '#f0ece4',            // warm white, not stark
-  textDim:     palette.zinc[500],
-  textMuted:   palette.zinc[600],
-  primary:     palette.amber[500],
-  accent:      palette.amber[500],
-  accentSoft:  '#2d2209',            // very dark amber tint for bg fills
-  accentDim:   palette.amber[700],
-  error:       '#f87171',
-  red:         '#f87171',
-  success:     '#4ade80',
-  green:       '#4ade80',
-  warning:     palette.amber[400],
-  yellow:      palette.amber[400],
-  info:        '#60a5fa',
-  blue:        '#60a5fa',
-  tint:        palette.amber[500],
-  icon:        palette.zinc[400],
-  tabIconDefault:  palette.zinc[600],
-  tabIconSelected: palette.amber[400],
+  background: '#191D1A',
+  bg: '#191D1A',
+  surface: '#242A25',
+  surface2: '#303831',
+  border: '#3B463E',
+  text: '#F5F1E9',
+  textDim: '#B9BDB4',
+  textMuted: '#B9BDB4',
+  primary: '#9DBBA3',
+  accent: '#88A991',
+  accentSoft: '#2D3C31',
+  accentDim: '#A9C3AC',
+  highlight: '#E08A66',
+  highlightSoft: '#49332B',
+  error: '#DF8274',
+  red: '#DF8274',
+  success: '#92B79A',
+  green: '#92B79A',
+  warning: '#D5A45F',
+  yellow: '#D5A45F',
+  info: '#85AFB6',
+  blue: '#85AFB6',
+  tint: '#88A991',
+  icon: '#B9BDB4',
+  tabIconDefault: '#A3AAA1',
+  tabIconSelected: '#C1D4C1',
+  categoryRoads: '#E08068',
+  categoryWater: '#79AEBB',
+  categoryWaste: '#9FB878',
+  categoryUtilities: '#D5A45F',
 };
 
 const lightColors = {
-  background:  '#fdf9f3',            // warm off-white
-  bg:          '#fdf9f3',
-  surface:     '#f5f0e8',            // warm cream surface
-  surface2:    '#ece6d8',
-  border:      '#e0d8cb',            // warm border
-  text:        '#1c1a17',            // warm near-black
-  textDim:     '#7a736a',
-  textMuted:   '#a09890',
-  primary:     palette.amber[600],
-  accent:      palette.amber[600],
-  accentSoft:  '#fef3c7',            // light amber tint
-  accentDim:   palette.amber[700],
-  error:       '#dc2626',
-  red:         '#dc2626',
-  success:     '#16a34a',
-  green:       '#16a34a',
-  warning:     palette.amber[600],
-  yellow:      palette.amber[600],
-  info:        '#2563eb',
-  blue:        '#2563eb',
-  tint:        palette.amber[600],
-  icon:        '#7a736a',
-  tabIconDefault:  '#9e9890',
-  tabIconSelected: palette.amber[600],
+  background: '#F6F3EC',
+  bg: '#F6F3EC',
+  surface: '#FFFEFB',
+  surface2: '#EEE9DF',
+  border: '#E4DDD1',
+  text: '#292E2A',
+  textDim: '#6E736B',
+  textMuted: '#6E736B',
+  primary: '#315B47',
+  accent: '#3F7057',
+  accentSoft: '#E5EEE6',
+  accentDim: '#315B47',
+  highlight: '#B95F3E',
+  highlightSoft: '#F5E7DE',
+  error: '#B54F43',
+  red: '#B54F43',
+  success: '#487750',
+  green: '#487750',
+  warning: '#98631F',
+  yellow: '#98631F',
+  info: '#477782',
+  blue: '#477782',
+  tint: '#3F7057',
+  icon: '#6E736B',
+  tabIconDefault: '#85877F',
+  tabIconSelected: '#315B47',
+  categoryRoads: '#B65F4D',
+  categoryWater: '#4C8290',
+  categoryWaste: '#65834F',
+  categoryUtilities: '#A8752D',
 };
 
 export const theme = {
   light: lightColors,
   dark: darkColors,
-  colors: darkColors,
+  colors: lightColors,
 };
 
 export const Colors = theme;
+
+export function getCategoryColor(icon: string | null | undefined, colors: typeof lightColors): string {
+  if (icon?.includes('car') || icon?.includes('road')) return colors.categoryRoads;
+  if (icon?.includes('drop') || icon?.includes('water')) return colors.categoryWater;
+  if (icon?.includes('trash') || icon?.includes('leaf')) return colors.categoryWaste;
+  if (icon?.includes('bolt') || icon?.includes('light')) return colors.categoryUtilities;
+  return colors.accent;
+}
 
 export const Spacing = {
   xs:  4,

@@ -8,8 +8,8 @@ export default function WaterDashboard({ deptId }: { deptId: string }) {
       deptId={deptId}
       departmentName="Water & Sanitation"
       departmentTagline="Water grid pressure, pipe burst responses, sewage maintenance & clean supply"
-      icon={<Droplet size={30} />}
-      primaryColor="#0ea5e9"
+      icon={<Droplet size={22} />}
+      primaryColor="#0284c7"
       accentGradient="from-sky-600 via-blue-600 to-slate-900"
     />
   );

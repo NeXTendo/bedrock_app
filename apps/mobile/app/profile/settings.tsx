@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -15,11 +15,12 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 
 import { supabase } from '@/lib/supabase';
+import { uploadImageAsync } from '@/lib/storage';
 import { useAuthStore } from '@/stores/authStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { theme } from '@/constants/theme';
@@ -50,10 +51,10 @@ export default function ProfileSettingsScreen() {
   const colors = theme[currentTheme as 'light' | 'dark'];
 
   // Form states
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [fullNameOverride, setFullNameOverride] = useState<string | null>(null);
+  const [phoneOverride, setPhoneOverride] = useState<string | null>(null);
   const [selectedWard, setSelectedWard] = useState('Ward 8 · Rhodes Park / Fairview');
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [avatarOverride, setAvatarOverride] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState(false);
@@ -80,16 +81,12 @@ export default function ProfileSettingsScreen() {
     enabled: !!user?.id,
   });
 
-  // Populate form when data arrives
-  useEffect(() => {
-    if (profile) {
-      setFullName(profile.full_name || '');
-      setPhone(profile.phone || '');
-      if (profile.avatar_url) {
-        setAvatarUri(profile.avatar_url);
-      }
-    }
-  }, [profile]);
+  const fullName = fullNameOverride ?? profile?.full_name ?? '';
+  const phone = phoneOverride ?? profile?.phone ?? '';
+  const avatarUri = avatarOverride ?? profile?.avatar_url ?? null;
+  const setFullName = setFullNameOverride;
+  const setPhone = setPhoneOverride;
+  const setAvatarUri = setAvatarOverride;
 
   // Pick Image from library
   const handlePickImage = async () => {
@@ -141,25 +138,18 @@ export default function ProfileSettingsScreen() {
       setIsUploadingPhoto(true);
       const fileName = `avatars/${user.id}-${Date.now()}.jpg`;
 
-      const formData = new FormData();
-      formData.append('file', {
-        uri: Platform.OS === 'ios' ? localUri.replace('file://', '') : localUri,
-        name: 'avatar.jpg',
-        type: 'image/jpeg',
-      } as any);
+      const uploadRes = await uploadImageAsync(localUri, fileName, {
+        bucket: 'report-photos',
+        maxWidth: 400,
+        quality: 0.8,
+        upsert: true,
+      });
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('report-photos')
-        .upload(fileName, formData, { upsert: true });
-
-      if (uploadError) {
-        // If storage upload fails, use local URI preview
-        setAvatarUri(localUri);
-      } else {
-        const publicUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/report-photos/${uploadData.path}`;
-        setAvatarUri(publicUrl);
-      }
-    } catch {
+      const publicUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/report-photos/${uploadRes.path}`;
+      setAvatarUri(publicUrl);
+    } catch (err) {
+      console.error('Avatar upload error:', err);
+      // If storage upload fails, use local URI preview
       setAvatarUri(localUri);
     } finally {
       setIsUploadingPhoto(false);

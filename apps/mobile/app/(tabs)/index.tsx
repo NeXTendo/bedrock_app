@@ -3,7 +3,7 @@ import { StyleSheet, View, Text, TouchableOpacity, useColorScheme, Platform } fr
 import { useRouter } from 'expo-router';
 import { useLocation } from '@/hooks/useLocation';
 import { useMapStore } from '@/stores/mapStore';
-import { theme } from '@/constants/theme';
+import { getCategoryColor, theme } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import * as Haptics from 'expo-haptics';
 import { useSettingsStore } from '@/stores/useSettingsStore';
@@ -32,12 +32,20 @@ interface Cluster {
   categoryIcon: string;
 }
 
+function hexToRgba(hex: string, opacity: number): string {
+  const value = hex.replace('#', '');
+  const red = parseInt(value.slice(0, 2), 16);
+  const green = parseInt(value.slice(2, 4), 16);
+  const blue = parseInt(value.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+}
+
 /**
  * Groups reports into spatial clusters using a zoom-aware grid.
  * Each grid cell is 20% of the visible latitude span.
  * Reports in the same cell are merged; centroid is recomputed iteratively.
  */
-function computeClusters(reports: any[], latitudeDelta: number): Cluster[] {
+function computeClusters(reports: any[], latitudeDelta: number, colors: typeof theme.light): Cluster[] {
   const gridSize = Math.max(0.0002, latitudeDelta * 0.2);
   const grid = new Map<string, Cluster>();
 
@@ -48,14 +56,15 @@ function computeClusters(reports: any[], latitudeDelta: number): Cluster[] {
 
     const cellLat = Math.floor(lat / gridSize);
     const cellLng = Math.floor(lng / gridSize);
-    const key = `${cellLat}_${cellLng}`;
+    const categoryKey = report.category_id || report.categories?.icon || 'other';
+    const key = `${cellLat}_${cellLng}_${categoryKey}`;
 
     if (!grid.has(key)) {
       grid.set(key, {
         reports: [],
         lat,
         lng,
-        color: report.categories?.color || '#EF4444',
+        color: report.categories?.color || getCategoryColor(report.categories?.icon, colors),
         categoryIcon: report.categories?.icon || 'flame.fill',
       });
     }
@@ -81,7 +90,7 @@ export default function HomeScreen() {
   const { location, address } = useLocation();
   const { center, zoom, setCenter } = useMapStore();
   const systemColorScheme = useColorScheme();
-  const { theme: storeTheme, hapticsEnabled, mapStyle } = useSettingsStore();
+  const { theme: storeTheme, hapticsEnabled, mapStyle, setMapStyle } = useSettingsStore();
   const { heatmapVisible, heatmapType, setSelectedCluster } = useHeatmapStore();
 
   const currentTheme = storeTheme === 'auto'
@@ -90,12 +99,7 @@ export default function HomeScreen() {
 
   const colors = theme[currentTheme as 'light' | 'dark'];
 
-  const [mapType, setMapType] = useState<'standard' | 'satellite'>(
-    mapStyle === 'satellite' ? 'satellite' : 'standard'
-  );
-  const [fabVisible, setFabVisible] = useState(true);
-  const hideFabTimeout = useRef<any>(null);
-
+  const mapType = mapStyle === 'satellite' ? 'satellite' : 'standard';
   const [legendVisible, setLegendVisible] = useState(true);
   const reappearTimeout = useRef<any>(null);
 
@@ -118,30 +122,20 @@ export default function HomeScreen() {
     },
   });
 
-  const handleRegionChange = () => {
-    setFabVisible(false);
-    setLegendVisible(false);
-    if (hideFabTimeout.current) clearTimeout(hideFabTimeout.current);
-    if (reappearTimeout.current) clearTimeout(reappearTimeout.current);
-  };
-
   const handleRegionChangeStart = () => {
-    setFabVisible(false);
     setLegendVisible(false);
-    if (hideFabTimeout.current) clearTimeout(hideFabTimeout.current);
     if (reappearTimeout.current) clearTimeout(reappearTimeout.current);
   };
 
   const handleRegionChangeComplete = (newRegion: typeof defaultRegion) => {
     setCurrentRegion(newRegion);
     setCenter([newRegion.longitude, newRegion.latitude]);
-    hideFabTimeout.current = setTimeout(() => setFabVisible(true), 300);
+    if (reappearTimeout.current) clearTimeout(reappearTimeout.current);
     reappearTimeout.current = setTimeout(() => setLegendVisible(true), 400);
   };
 
   useEffect(() => {
     return () => {
-      if (hideFabTimeout.current) clearTimeout(hideFabTimeout.current);
       if (reappearTimeout.current) clearTimeout(reappearTimeout.current);
     };
   }, []);
@@ -180,8 +174,8 @@ export default function HomeScreen() {
 
   // Compute spatial clusters from filtered reports
   const clusters = useMemo(
-    () => computeClusters(heatmapReports, currentRegion.latitudeDelta),
-    [heatmapReports, currentRegion.latitudeDelta]
+    () => computeClusters(heatmapReports, currentRegion.latitudeDelta, colors),
+    [heatmapReports, currentRegion.latitudeDelta, colors]
   );
 
   const markerBucket = useMemo(() => {
@@ -256,7 +250,6 @@ export default function HomeScreen() {
         showsUserLocation={true}
         showsMyLocationButton={false}
         userInterfaceStyle={currentTheme as 'light' | 'dark'}
-        onRegionChange={handleRegionChange}
         onRegionChangeStart={handleRegionChangeStart}
         onRegionChangeComplete={handleRegionChangeComplete}
         customMapStyle={currentTheme === 'dark' ? mapDarkStyle : []}
@@ -269,48 +262,21 @@ export default function HomeScreen() {
 
           return (
             <Fragment key={`thermal-cluster-${i}`}>
-              {/* Outer Ambient Dispersion Aura (Cyan/Blue to Amber transition) */}
+              {/* Category-colored density layers keep report types distinct. */}
               <Circle
                 center={{ latitude: cluster.lat, longitude: cluster.lng }}
-                radius={radius * 1.2}
-                fillColor={`rgba(37, 99, 235, ${0.08 + intensity * 0.05})`}
-                strokeColor="rgba(0,0,0,0)"
-                strokeWidth={0}
+                radius={radius}
+                fillColor={hexToRgba(cluster.color, 0.18 + intensity * 0.15)}
+                strokeColor={hexToRgba(cluster.color, 0.42)}
+                strokeWidth={1}
               />
-              {/* Outer Thermal Radiation Bloom (Amber/Orange) */}
-              <Circle
-                center={{ latitude: cluster.lat, longitude: cluster.lng }}
-                radius={radius * 0.75}
-                fillColor={`rgba(249, 115, 22, ${0.18 + intensity * 0.12})`}
-                strokeColor="rgba(0,0,0,0)"
-                strokeWidth={0}
-              />
-              {/* Mid-Core Infrared Combustion Zone (Crimson Red) */}
               <Circle
                 center={{ latitude: cluster.lat, longitude: cluster.lng }}
                 radius={radius * 0.45}
-                fillColor={`rgba(239, 68, 68, ${0.35 + intensity * 0.20})`}
-                strokeColor="rgba(0,0,0,0)"
-                strokeWidth={0}
+                fillColor={hexToRgba(cluster.color, 0.32 + intensity * 0.28)}
+                strokeColor={hexToRgba(cluster.color, 0.55)}
+                strokeWidth={1}
               />
-              {/* High-Heat Focus Core (Vibrant Yellow) */}
-              <Circle
-                center={{ latitude: cluster.lat, longitude: cluster.lng }}
-                radius={radius * 0.22}
-                fillColor={`rgba(250, 204, 21, ${0.55 + intensity * 0.25})`}
-                strokeColor="rgba(0,0,0,0)"
-                strokeWidth={0}
-              />
-              {/* White-Hot Core Zenith for Dense Hotspots */}
-              {count >= 3 && (
-                <Circle
-                  center={{ latitude: cluster.lat, longitude: cluster.lng }}
-                  radius={radius * 0.10}
-                  fillColor={`rgba(255, 255, 255, ${0.75 + intensity * 0.20})`}
-                  strokeColor="rgba(0,0,0,0)"
-                  strokeWidth={0}
-                />
-              )}
 
               {/* Interactive Sharp Civic Hotspot Beacon Marker */}
               <Marker
@@ -328,7 +294,6 @@ export default function HomeScreen() {
                   <Text style={[styles.clusterBeaconCount, { color: colors.text }]}>
                     {count}
                   </Text>
-                  <View style={[styles.beaconDot, { backgroundColor: cluster.color }]} />
                 </View>
               </Marker>
             </Fragment>
@@ -352,14 +317,14 @@ export default function HomeScreen() {
               {
                 width: markerPx,
                 height: markerPx,
-                borderRadius: 4,
+                borderRadius: 8,
                 backgroundColor: colors.surface,
-                borderColor: report.categories?.color || colors.border,
+                borderColor: report.categories?.color || getCategoryColor(report.categories?.icon, colors),
               }
             ]}>
               <IconSymbol
                 name={report.categories?.icon || 'paperplane.fill'}
-                color={report.categories?.color || colors.text}
+                color={report.categories?.color || getCategoryColor(report.categories?.icon, colors)}
                 size={iconPx}
               />
             </View>
@@ -373,8 +338,12 @@ export default function HomeScreen() {
       <View style={[styles.mapControls, { bottom: insets.bottom + 88 }]}>
         <TouchableOpacity
           style={[styles.mapControlBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          onPress={() => setMapType(mapType === 'standard' ? 'satellite' : 'standard')}
+          onPress={() => {
+            setMapStyle(mapType === 'standard' ? 'satellite' : 'standard');
+          }}
           activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={mapType === 'standard' ? 'Switch to satellite map' : 'Switch to standard map'}
         >
           <IconSymbol name={mapType === 'standard' ? 'globe.americas.fill' : 'map.fill'} color={colors.textDim} size={17} />
         </TouchableOpacity>
@@ -382,13 +351,20 @@ export default function HomeScreen() {
           style={[styles.mapControlBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
           onPress={recenter}
           activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel="Center map on my location"
         >
           <IconSymbol name="location.fill" color={colors.accent} size={17} />
         </TouchableOpacity>
       </View>
 
       {/* Heatmap thermometer key — hides while panning */}
-      <HeatmapLegendKey bottomOffset={insets.bottom + 88} visible={legendVisible} />
+      <HeatmapLegendKey
+        bottomOffset={insets.bottom + 88}
+        visible={legendVisible}
+        reportCount={reports?.length ?? 0}
+        loading={reports === undefined}
+      />
 
       {/* Paged onboarding modal */}
       <HeatmapOnboardingModal />
@@ -397,13 +373,13 @@ export default function HomeScreen() {
 }
 
 const mapDarkStyle = [
-  { "elementType": "geometry", "stylers": [{ "color": "#1a1814" }] },
-  { "elementType": "labels.text.fill", "stylers": [{ "color": "#7a6f5e" }] },
-  { "elementType": "labels.text.stroke", "stylers": [{ "color": "#0c0b09" }] },
-  { "featureType": "administrative", "elementType": "geometry", "stylers": [{ "color": "#3d3526" }] },
-  { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#0e0d0b" }] },
-  { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#2d2820" }] },
-  { "featureType": "poi", "elementType": "geometry", "stylers": [{ "color": "#221e18" }] },
+  { "elementType": "geometry", "stylers": [{ "color": "#20251F" }] },
+  { "elementType": "labels.text.fill", "stylers": [{ "color": "#CBC8BD" }] },
+  { "elementType": "labels.text.stroke", "stylers": [{ "color": "#191D1A" }] },
+  { "featureType": "administrative", "elementType": "geometry", "stylers": [{ "color": "#3B463E" }] },
+  { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#18211F" }] },
+  { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#303630" }] },
+  { "featureType": "poi", "elementType": "geometry", "stylers": [{ "color": "#252A24" }] },
 ];
 
 const styles = StyleSheet.create({
@@ -419,7 +395,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 7,
     paddingVertical: 4,
-    borderRadius: 4,
+    borderRadius: 10,
     borderWidth: 1.5,
     ...Platform.select({
       ios: {
@@ -436,11 +412,6 @@ const styles = StyleSheet.create({
   clusterBeaconCount: {
     fontSize: 11,
     fontWeight: '800',
-  },
-  beaconDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
   },
   reportMarker: {
     borderWidth: 1.5,
@@ -466,10 +437,10 @@ const styles = StyleSheet.create({
   mapControlBtn: {
     width: 40,
     height: 40,
-    borderRadius: 13,
+    borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: 0,
     ...Platform.select({
       ios: {
         shadowColor: '#000',

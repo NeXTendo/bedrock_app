@@ -28,7 +28,6 @@ interface EmergencyContact {
   displayPhone: string;
   desc: string;
   icon: string;
-  color: string;
   available: string;
 }
 
@@ -41,7 +40,6 @@ const EMERGENCY_CONTACTS: EmergencyContact[] = [
     displayPhone: '991 / 0211 228 923',
     desc: 'Central command & urgent civic response',
     icon: 'shield.fill',
-    color: '#3b82f6',
     available: '24/7 Toll-free',
   },
   {
@@ -52,7 +50,6 @@ const EMERGENCY_CONTACTS: EmergencyContact[] = [
     displayPhone: '0211 363 636 / 0977 797 979',
     desc: 'High voltage faults, lines down & outages',
     icon: 'bolt.fill',
-    color: '#f59e0b',
     available: '24/7 National Dispatch',
   },
   {
@@ -63,7 +60,6 @@ const EMERGENCY_CONTACTS: EmergencyContact[] = [
     displayPhone: '0211 251 712 / 0955 798 888',
     desc: 'Pipe bursts, sewer overflows & contamination',
     icon: 'drop.fill',
-    color: '#06b6d4',
     available: '24/7 Rapid Response',
   },
   {
@@ -74,7 +70,6 @@ const EMERGENCY_CONTACTS: EmergencyContact[] = [
     displayPhone: '993 / 0211 220 180',
     desc: 'Fire suppression, building collapse & rescues',
     icon: 'flame.fill',
-    color: '#ef4444',
     available: '24/7 Emergency',
   },
   {
@@ -85,7 +80,6 @@ const EMERGENCY_CONTACTS: EmergencyContact[] = [
     displayPhone: '992 / 0977 123 992',
     desc: 'Critical medical transport & paramedic dispatch',
     icon: 'cross.case.fill',
-    color: '#10b981',
     available: '24/7 Dispatch',
   },
   {
@@ -96,7 +90,6 @@ const EMERGENCY_CONTACTS: EmergencyContact[] = [
     displayPhone: '0211 252 501',
     desc: 'Civic complaints, public health & road safety',
     icon: 'building.2.fill',
-    color: '#8b5cf6',
     available: 'Mon–Fri 08:00–17:00',
   },
 ];
@@ -235,7 +228,7 @@ const WARD_SCHEDULES: WardSchedule[] = [
   },
 ];
 
-type ServiceTab = 'all' | 'hotlines' | 'bulletins' | 'waste';
+type ServiceTab = 'hotlines' | 'bulletins' | 'waste';
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -247,10 +240,10 @@ export default function ServicesScreen() {
 
   const currentTheme = storeTheme === 'auto' ? (systemColorScheme || 'light') : storeTheme;
   const colors = theme[currentTheme as 'light' | 'dark'];
-  const isDark = currentTheme === 'dark';
 
-  const [activeTab, setActiveTab] = useState<ServiceTab>('all');
+  const [activeTab, setActiveTab] = useState<ServiceTab>('hotlines');
   const [selectedWardId, setSelectedWardId] = useState<string>('w-8');
+  const [wasteDetailsExpanded, setWasteDetailsExpanded] = useState(false);
   const [bulletinFilter, setBulletinFilter] = useState<'all' | 'active' | 'scheduled'>('all');
   const [searchFilter, setSearchFilter] = useState('');
 
@@ -258,20 +251,13 @@ export default function ServicesScreen() {
     return WARD_SCHEDULES.find(w => w.id === selectedWardId) || WARD_SCHEDULES[0];
   }, [selectedWardId]);
 
-  const handleCall = (phone: string, name: string) => {
+  const handleCall = async (phone: string, name: string) => {
     if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    Alert.alert(
-      `Call ${name}`,
-      `Dial ${phone}? Direct connection to official dispatch.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Call Now',
-          style: 'default',
-          onPress: () => Linking.openURL(`tel:${phone.replace(/[^0-9+]/g, '')}`),
-        },
-      ]
-    );
+    try {
+      await Linking.openURL(`tel:${phone.replace(/[^0-9+]/g, '')}`);
+    } catch {
+      Alert.alert('Unable to start call', `Please try dialing ${name} directly: ${phone}`);
+    }
   };
 
   const handleShareBulletin = (b: OutageBulletin) => {
@@ -309,146 +295,138 @@ export default function ServicesScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      {/* ── Top Header ── */}
-      <View style={[
-        styles.header,
-        {
-          paddingTop: insets.top + 8,
-          backgroundColor: isDark ? 'rgba(12,11,9,0.95)' : 'rgba(253,249,243,0.95)',
-          borderBottomColor: colors.border,
-        }
-      ]}>
-        <View style={styles.headerTopRow}>
-          <View>
-            <Text style={[styles.screenTitle, { color: colors.text }]}>Services & Directory</Text>
-            <Text style={[styles.screenSubtitle, { color: colors.textDim }]}>
-              Ward schedules, emergency hotlines & utility bulletins
-            </Text>
-          </View>
-          <View style={[styles.cityBadge, { backgroundColor: colors.accentSoft, borderColor: colors.accent + '35' }]}>
-            <IconSymbol name="mappin.circle.fill" color={colors.accent} size={12} />
-            <Text style={[styles.cityBadgeText, { color: colors.accent }]}>Lusaka</Text>
-          </View>
-        </View>
-
-        {/* ── Search Input ── */}
-        <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <IconSymbol name="magnifyingglass" color={colors.textDim} size={15} />
-          <TextInput
-            placeholder="Search ward, utility, hotline or area..."
-            placeholderTextColor={colors.textDim}
-            value={searchFilter}
-            onChangeText={setSearchFilter}
-            style={[styles.searchInput, { color: colors.text }]}
-          />
-          {searchFilter.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchFilter('')}>
-              <IconSymbol name="xmark.circle.fill" color={colors.textDim} size={16} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* ── Filter Tabs ── */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterTabsTrack}
-        >
-          {[
-            { id: 'all', label: 'Overview' },
-            { id: 'hotlines', label: 'Emergency hotlines' },
-            { id: 'bulletins', label: 'Utility bulletins' },
-            { id: 'waste', label: 'Ward waste schedule' },
-          ].map((tab) => {
-            const active = activeTab === tab.id;
-            return (
-              <TouchableOpacity
-                key={tab.id}
-                onPress={() => {
-                  if (hapticsEnabled) Haptics.selectionAsync();
-                  setActiveTab(tab.id as ServiceTab);
-                }}
-                style={[
-                  styles.tabChip,
-                  {
-                    backgroundColor: active ? colors.accent : colors.surface,
-                    borderColor: active ? colors.accent : colors.border,
-                  }
-                ]}
-              >
-                <Text style={[
-                  styles.tabChipText,
-                  { color: active ? '#ffffff' : colors.text }
-                ]}>
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-      </View>
-
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingTop: insets.top + 150,
-          paddingBottom: insets.bottom + 100,
-          paddingHorizontal: 16,
-        }}
+        contentContainerStyle={[
+          styles.pageContent,
+          { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 100 },
+        ]}
       >
-        {/* ── Section: Emergency & Utility Hotlines ── */}
-        {(activeTab === 'all' || activeTab === 'hotlines') && (
+        {/* ── Page header and section selector ── */}
+        <View style={styles.header}>
+          <View style={styles.headerTopRow}>
+            <View>
+              <Text style={[styles.screenTitle, { color: colors.text }]}>Services</Text>
+              <Text style={[styles.screenSubtitle, { color: colors.textDim }]}>
+                Get help and check local updates.
+              </Text>
+            </View>
+            <View style={[styles.cityBadge, { backgroundColor: colors.accentSoft, borderColor: colors.accent + '35' }]}>
+              <IconSymbol name="mappin.circle.fill" color={colors.accent} size={12} />
+              <Text style={[styles.cityBadgeText, { color: colors.accent }]}>Lusaka</Text>
+            </View>
+          </View>
+
+          {activeTab !== 'waste' && (
+            <View style={[styles.searchBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <IconSymbol name="magnifyingglass" color={colors.textDim} size={15} />
+              <TextInput
+                placeholder={activeTab === 'hotlines' ? 'Search contacts' : 'Search outages'}
+                placeholderTextColor={colors.textDim}
+                value={searchFilter}
+                onChangeText={setSearchFilter}
+                style={[styles.searchInput, { color: colors.text }]}
+              />
+              {searchFilter.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchFilter('')} accessibilityLabel="Clear search">
+                  <IconSymbol name="xmark.circle.fill" color={colors.textDim} size={16} />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          <View style={[styles.filterTabsTrack, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
+            {[
+              { id: 'hotlines', label: 'Hotlines' },
+              { id: 'bulletins', label: 'Outages' },
+              { id: 'waste', label: 'Waste' },
+            ].map((tab) => {
+              const active = activeTab === tab.id;
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  onPress={() => {
+                    if (hapticsEnabled) Haptics.selectionAsync();
+                    setActiveTab(tab.id as ServiceTab);
+                    setSearchFilter('');
+                  }}
+                  style={[
+                    styles.tabChip,
+                    {
+                      backgroundColor: active ? colors.surface : 'transparent',
+                      borderColor: active ? colors.border : 'transparent',
+                    }
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={[styles.tabChipText, { color: active ? colors.text : colors.textDim }]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.content}>
+        {activeTab === 'hotlines' && (
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Emergency & utility hotlines</Text>
-              <Text style={[styles.sectionSub, { color: colors.textDim }]}>One-tap direct dial</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Call a service</Text>
+              <Text style={[styles.sectionSub, { color: colors.textDim }]}>Tap to open dialer</Text>
             </View>
 
             <View style={styles.hotlinesGrid}>
-              {filteredContacts.map((contact) => (
+              {[...filteredContacts]
+                .sort((a, b) => {
+                  const priority = { emergency: 0, utility: 1, council: 2 };
+                  return priority[a.category] - priority[b.category];
+                })
+                .map((contact) => (
                 <TouchableOpacity
                   key={contact.id}
                   style={[styles.contactCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
                   onPress={() => handleCall(contact.phone, contact.name)}
                   activeOpacity={0.75}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Call ${contact.name}, ${contact.displayPhone}. ${contact.desc}. ${contact.available}`}
                 >
-                  <View style={styles.contactTopRow}>
-                    <View style={[styles.contactIconWrap, { backgroundColor: contact.color + '18' }]}>
-                      <IconSymbol name={contact.icon} color={contact.color} size={16} />
-                    </View>
-                    <View style={[styles.callBtn, { backgroundColor: colors.accentSoft }]}>
-                      <IconSymbol name="phone.fill" color={colors.accent} size={12} />
-                      <Text style={[styles.callBtnText, { color: colors.accent }]}>Call</Text>
-                    </View>
+                  <View style={[styles.contactIconWrap, { backgroundColor: colors.accentSoft }]}>
+                    <IconSymbol name={contact.icon} color={colors.accent} size={17} />
                   </View>
-
-                  <Text style={[styles.contactName, { color: colors.text }]} numberOfLines={1}>
-                    {contact.name}
-                  </Text>
-                  <Text style={[styles.contactDesc, { color: colors.textDim }]} numberOfLines={2}>
-                    {contact.desc}
-                  </Text>
-
-                  <View style={[styles.contactFooter, { borderTopColor: colors.border }]}>
+                  <View style={styles.contactDetails}>
+                    <Text style={[styles.contactName, { color: colors.text }]} numberOfLines={1}>
+                      {contact.name}
+                    </Text>
+                    <Text style={[styles.contactDesc, { color: colors.textDim }]} numberOfLines={1}>
+                      {contact.desc}
+                    </Text>
                     <Text style={[styles.contactPhone, { color: colors.text }]}>{contact.displayPhone}</Text>
                     <Text style={[styles.contactAvail, { color: colors.textDim }]}>{contact.available}</Text>
+                  </View>
+                  <View style={[styles.callBtn, { backgroundColor: colors.accentSoft }]}>
+                    <IconSymbol name="phone.fill" color={colors.accent} size={13} />
+                    <Text style={[styles.callBtnText, { color: colors.accent }]}>Call</Text>
                   </View>
                 </TouchableOpacity>
               ))}
             </View>
+            {filteredContacts.length === 0 && (
+              <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.emptyStateText, { color: colors.textDim }]}>No contacts match your search.</Text>
+              </View>
+            )}
           </View>
         )}
 
         {/* ── Section: Ward Waste & Sanitation Schedules ── */}
-        {(activeTab === 'all' || activeTab === 'waste') && (
+        {activeTab === 'waste' && (
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
               <View>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>Ward waste pickup schedule</Text>
-                <Text style={[styles.sectionSub, { color: colors.textDim }]}>Lusaka municipal solid waste collection</Text>
-              </View>
-              <View style={[styles.countBadge, { backgroundColor: colors.surface2 }]}>
-                <Text style={[styles.countBadgeText, { color: colors.textDim }]}>Ward {currentWard.wardNumber}</Text>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Waste pickup</Text>
+                <Text style={[styles.sectionSub, { color: colors.textDim }]}>Select your ward</Text>
               </View>
             </View>
 
@@ -494,13 +472,10 @@ export default function ServicesScreen() {
                   <Text style={[styles.scheduleWardTitle, { color: colors.text }]}>
                     Ward {currentWard.wardNumber} — {currentWard.name}
                   </Text>
-                  <Text style={[styles.scheduleOperator, { color: colors.textDim }]}>
-                    Managed by {currentWard.operator}
-                  </Text>
                 </View>
                 <View style={[styles.nextPickupPill, { backgroundColor: colors.success + '20' }]}>
                   <Text style={[styles.nextPickupText, { color: colors.success }]}>
-                    {currentWard.nextPickup}
+                    Next: {currentWard.nextPickup}
                   </Text>
                 </View>
               </View>
@@ -516,37 +491,60 @@ export default function ServicesScreen() {
                 </View>
               </View>
 
-              <View style={styles.wasteTypesRow}>
-                <Text style={[styles.scheduleLabel, { color: colors.textDim, marginBottom: 6 }]}>
-                  Accepted categories:
+              <TouchableOpacity
+                style={styles.scheduleDetailsToggle}
+                onPress={() => setWasteDetailsExpanded(value => !value)}
+                activeOpacity={0.75}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: wasteDetailsExpanded }}
+              >
+                <Text style={[styles.scheduleDetailsToggleText, { color: colors.accent }]}>
+                  {wasteDetailsExpanded ? 'Hide schedule details' : 'More schedule details'}
                 </Text>
-                <View style={styles.wasteChipsWrap}>
-                  {currentWard.wasteTypes.map((type, idx) => (
-                    <View key={idx} style={[styles.wasteChip, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
-                      <IconSymbol name="checkmark.circle.fill" color={colors.accent} size={10} />
-                      <Text style={[styles.wasteChipText, { color: colors.text }]}>{type}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
+                <IconSymbol
+                  name={wasteDetailsExpanded ? 'chevron.up' : 'chevron.down'}
+                  color={colors.accent}
+                  size={13}
+                />
+              </TouchableOpacity>
 
-              <View style={[styles.depotRow, { backgroundColor: colors.surface2 }]}>
-                <IconSymbol name="mappin" color={colors.accent} size={13} />
-                <Text style={[styles.depotText, { color: colors.textDim }]} numberOfLines={1}>
-                  Depot: {currentWard.depotAddress}
-                </Text>
-              </View>
+              {wasteDetailsExpanded && (
+                <View style={styles.wasteDetails}>
+                  <Text style={[styles.scheduleOperator, { color: colors.textDim }]}>
+                    Managed by {currentWard.operator}
+                  </Text>
+                  <View style={styles.wasteTypesRow}>
+                    <Text style={[styles.scheduleLabel, { color: colors.textDim, marginBottom: 6 }]}>
+                      Accepted categories
+                    </Text>
+                    <View style={styles.wasteChipsWrap}>
+                      {currentWard.wasteTypes.map((type, idx) => (
+                        <View key={idx} style={[styles.wasteChip, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
+                          <IconSymbol name="checkmark.circle.fill" color={colors.accent} size={10} />
+                          <Text style={[styles.wasteChipText, { color: colors.text }]}>{type}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                  <View style={[styles.depotRow, { backgroundColor: colors.surface2 }]}>
+                    <IconSymbol name="mappin" color={colors.accent} size={13} />
+                    <Text style={[styles.depotText, { color: colors.textDim }]} numberOfLines={1}>
+                      {currentWard.depotAddress}
+                    </Text>
+                  </View>
+                </View>
+              )}
             </View>
           </View>
         )}
 
         {/* ── Section: Utility Outage & Maintenance Bulletins ── */}
-        {(activeTab === 'all' || activeTab === 'bulletins') && (
+        {activeTab === 'bulletins' && (
           <View style={styles.section}>
             <View style={styles.sectionHeaderRow}>
               <View>
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>Utility maintenance & outages</Text>
-                <Text style={[styles.sectionSub, { color: colors.textDim }]}>Live civic infrastructure advisories</Text>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>Service updates</Text>
+                <Text style={[styles.sectionSub, { color: colors.textDim }]}>Outages and scheduled work</Text>
               </View>
               <View style={styles.bulletinFilterTabs}>
                 {(['all', 'active', 'scheduled'] as const).map(f => (
@@ -574,10 +572,10 @@ export default function ServicesScreen() {
 
             {filteredBulletins.map((bulletin) => {
               const statusColor = bulletin.status === 'active'
-                ? '#ef4444'
+                ? colors.error
                 : bulletin.status === 'scheduled'
-                ? '#f59e0b'
-                : '#10b981';
+                ? colors.warning
+                : colors.success;
 
               const iconName = bulletin.type === 'power'
                 ? 'bolt.fill'
@@ -605,7 +603,7 @@ export default function ServicesScreen() {
                     </View>
                   </View>
 
-                  <Text style={[styles.bulletinDetails, { color: colors.text }]}>
+                  <Text style={[styles.bulletinDetails, { color: colors.text }]} numberOfLines={2}>
                     {bulletin.details}
                   </Text>
 
@@ -624,13 +622,9 @@ export default function ServicesScreen() {
 
                   <View style={styles.affectedSection}>
                     <Text style={[styles.affectedLabel, { color: colors.textDim }]}>Affected areas:</Text>
-                    <View style={styles.affectedTagsWrap}>
-                      {bulletin.affectedAreas.map((area, idx) => (
-                        <View key={idx} style={[styles.areaTag, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
-                          <Text style={[styles.areaTagText, { color: colors.text }]}>{area}</Text>
-                        </View>
-                      ))}
-                    </View>
+                    <Text style={[styles.affectedAreasText, { color: colors.text }]} numberOfLines={2}>
+                      {bulletin.affectedAreas.join(' · ')}
+                    </Text>
                   </View>
 
                   <View style={[styles.bulletinFooter, { borderTopColor: colors.border }]}>
@@ -645,37 +639,38 @@ export default function ServicesScreen() {
                 </View>
               );
             })}
+            {filteredBulletins.length === 0 && (
+              <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.emptyStateText, { color: colors.textDim }]}>
+                  {searchFilter ? 'No updates match your search.' : `No ${bulletinFilter} updates to show.`}
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
-        {/* ── Section: Quick Report Shortcut ── */}
-        <View style={[styles.reportPromptCard, { backgroundColor: colors.surface, borderColor: colors.accent + '40' }]}>
+        {/* ── Quick report shortcut ── */}
+        <TouchableOpacity
+          style={[styles.reportPromptCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          onPress={() => {
+            if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            router.push('/(tabs)/report' as any);
+          }}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Report a service issue"
+        >
           <View style={[styles.reportPromptIcon, { backgroundColor: colors.accentSoft }]}>
-            <IconSymbol name="exclamationmark.triangle.fill" color={colors.accent} size={20} />
+            <IconSymbol name="plus.circle.fill" color={colors.accent} size={18} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.reportPromptTitle, { color: colors.text }]}>Notice an unreported utility outage?</Text>
+            <Text style={[styles.reportPromptTitle, { color: colors.text }]}>Report a service issue</Text>
             <Text style={[styles.reportPromptDesc, { color: colors.textDim }]}>
-              Log a rapid report with GPS coordinates to alert dispatch crews in your ward.
+              Send a new issue to the city team.
             </Text>
           </View>
-          <TouchableOpacity
-            onPress={() => {
-              if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              router.push('/(tabs)/report' as any);
-            }}
-            style={[styles.reportPromptBtn, { backgroundColor: colors.accent }]}
-          >
-            <Text style={styles.reportPromptBtnText}>Report</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── Municipal Footer ── */}
-        <View style={styles.registryFooter}>
-          <IconSymbol name="checkmark.shield.fill" color={colors.accent} size={15} />
-          <Text style={[styles.registryFooterText, { color: colors.textDim }]}>
-            Connected with Lusaka City Council, ZESCO & LWSC Public Utility Registries.
-          </Text>
+          <IconSymbol name="chevron.right" color={colors.textDim} size={14} />
+        </TouchableOpacity>
         </View>
       </ScrollView>
     </View>
@@ -686,38 +681,40 @@ export default function ServicesScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  pageContent: {
+    paddingHorizontal: 16,
+  },
+  content: {
+    paddingTop: 4,
+  },
 
   /* Header */
   header: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    zIndex: 10,
+    paddingBottom: 12,
+    marginBottom: 12,
   },
   headerTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 10,
+    alignItems: 'center',
+    marginBottom: 14,
   },
   screenTitle: {
-    fontSize: 20,
+    fontSize: 28,
     fontWeight: '700',
-    letterSpacing: -0.3,
+    letterSpacing: -0.6,
   },
   screenSubtitle: {
-    fontSize: 12,
+    fontSize: 13,
     marginTop: 2,
   },
   cityBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
     borderWidth: 1,
   },
   cityBadgeText: {
@@ -727,26 +724,31 @@ const styles = StyleSheet.create({
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    height: 38,
-    borderRadius: 12,
+    gap: 10,
+    paddingHorizontal: 14,
+    height: 48,
+    borderRadius: 14,
     borderWidth: 1,
-    marginBottom: 10,
+    marginBottom: 14,
   },
   searchInput: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 14,
     paddingVertical: 0,
   },
   filterTabsTrack: {
-    gap: 6,
-    paddingBottom: 2,
+    flexDirection: 'row',
+    gap: 4,
+    padding: 4,
+    borderRadius: 13,
+    borderWidth: 1,
   },
   tabChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 9,
+    borderRadius: 10,
     borderWidth: 1,
   },
   tabChipText: {
@@ -756,90 +758,71 @@ const styles = StyleSheet.create({
 
   /* Sections */
   section: {
-    marginBottom: 24,
+    marginBottom: 18,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginBottom: 10,
+    alignItems: 'center',
+    marginBottom: 12,
   },
   sectionTitle: {
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '700',
-    letterSpacing: -0.2,
   },
   sectionSub: {
-    fontSize: 11,
+    fontSize: 12,
     marginTop: 1,
   },
-  countBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  countBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-
-  /* Hotlines Grid */
+  /* Hotlines */
   hotlinesGrid: {
-    gap: 10,
+    gap: 8,
   },
   contactCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 12,
-  },
-  contactTopRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    gap: 10,
+    borderRadius: 15,
+    borderWidth: 1,
+    padding: 11,
   },
   contactIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  contactDetails: { flex: 1 },
   callBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: 11,
   },
   callBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '600',
   },
   contactName: {
     fontSize: 13,
     fontWeight: '700',
-    marginBottom: 2,
   },
   contactDesc: {
     fontSize: 11,
-    lineHeight: 15,
-    marginBottom: 10,
-  },
-  contactFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    lineHeight: 14,
+    marginTop: 1,
+    marginBottom: 3,
   },
   contactPhone: {
-    fontSize: 11,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
   },
   contactAvail: {
     fontSize: 10,
+    marginTop: 1,
   },
 
   /* Ward Waste Schedule */
@@ -858,9 +841,9 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   scheduleCard: {
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    padding: 14,
+    padding: 16,
   },
   scheduleTopRow: {
     flexDirection: 'row',
@@ -891,6 +874,20 @@ const styles = StyleSheet.create({
   nextPickupText: {
     fontSize: 10,
     fontWeight: '700',
+  },
+  scheduleDetailsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 12,
+  },
+  scheduleDetailsToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  wasteDetails: {
+    paddingTop: 12,
+    gap: 10,
   },
   scheduleGrid: {
     flexDirection: 'row',
@@ -961,7 +958,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   bulletinCard: {
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     padding: 14,
     marginBottom: 12,
@@ -990,7 +987,7 @@ const styles = StyleSheet.create({
   statusChip: {
     paddingHorizontal: 7,
     paddingVertical: 3,
-    borderRadius: 6,
+    borderRadius: 9,
     borderWidth: 1,
   },
   statusChipText: {
@@ -999,14 +996,13 @@ const styles = StyleSheet.create({
   },
   bulletinDetails: {
     fontSize: 12,
-    lineHeight: 17,
+    lineHeight: 18,
     marginBottom: 10,
   },
   bulletinTimingBox: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 8,
-    borderRadius: 8,
+    gap: 7,
+    padding: 10,
+    borderRadius: 11,
     marginBottom: 10,
   },
   timingItem: {
@@ -1021,22 +1017,13 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   affectedLabel: {
-    fontSize: 10,
+    fontSize: 11,
+    fontWeight: '600',
     marginBottom: 4,
   },
-  affectedTagsWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 4,
-  },
-  areaTag: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  areaTagText: {
-    fontSize: 10,
+  affectedAreasText: {
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: '500',
   },
   bulletinFooter: {
@@ -1051,57 +1038,43 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   shareActionText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
   },
 
-  /* Report Prompt Card */
+  /* Quick report action */
   reportPromptCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 14,
-    borderRadius: 14,
+    gap: 10,
+    padding: 12,
+    borderRadius: 15,
     borderWidth: 1,
-    marginBottom: 20,
+    marginBottom: 4,
   },
   reportPromptIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 11,
     justifyContent: 'center',
     alignItems: 'center',
   },
   reportPromptTitle: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
-    marginBottom: 2,
   },
   reportPromptDesc: {
-    fontSize: 10,
-    lineHeight: 14,
-  },
-  reportPromptBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
-  },
-  reportPromptBtnText: {
-    color: '#ffffff',
     fontSize: 11,
-    fontWeight: '700',
+    lineHeight: 15,
+    marginTop: 2,
   },
-
-  /* Registry Footer */
-  registryFooter: {
-    flexDirection: 'row',
+  emptyState: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 16,
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
   },
-  registryFooterText: {
-    fontSize: 10,
-    textAlign: 'center',
+  emptyStateText: {
+    fontSize: 13,
   },
 });

@@ -1,18 +1,16 @@
 import { StyleSheet, View, Text, FlatList, TouchableOpacity, useColorScheme } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { theme } from '@/constants/theme';
+import { getCategoryColor, theme } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useAuthStore } from '@/stores/authStore';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { AppHeader } from '@/components/AppHeader';
 
 export default function SubmissionHistoryScreen() {
   const { user } = useAuthStore();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const systemColorScheme = useColorScheme();
   const { theme: storeTheme } = useSettingsStore();
 
@@ -49,14 +47,14 @@ export default function SubmissionHistoryScreen() {
     >
       <View style={styles.cardHeader}>
         <View style={styles.categoryInfo}>
-          <View style={[styles.iconContainer, { backgroundColor: (item.categories?.color || colors.accent) + '20' }]}>
-            <IconSymbol name={(item.categories?.icon || 'paperplane.fill') as any} color={item.categories?.color || colors.accent} size={16} />
+          <View style={[styles.iconContainer, { backgroundColor: getCategoryColor(item.categories?.icon, colors) + '20' }]}>
+            <IconSymbol name={(item.categories?.icon || 'paperplane.fill') as any} color={getCategoryColor(item.categories?.icon, colors)} size={16} />
           </View>
           <Text style={[styles.categoryName, { color: colors.text }]}>{item.categories?.name || 'Issue'}</Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status, colors) + '15' }]}>
           <Text style={[styles.statusText, { color: getStatusColor(item.status, colors) }]}>
-            {item.status.toUpperCase()}
+            {item.status.replace('_', ' ').replace(/\b\w/g, (letter: string) => letter.toUpperCase())}
           </Text>
         </View>
       </View>
@@ -80,8 +78,7 @@ export default function SubmissionHistoryScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <AppHeader 
-        title="Submission History"
-        subtitle="OFFICIAL RECORDS"
+        title="My reports"
         leftElement={
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <IconSymbol name="chevron.left" color={colors.text} size={24} />
@@ -131,15 +128,15 @@ const styles = StyleSheet.create({
   backButton: {
     width: 36,
     height: 36,
-    borderRadius: 4,
+    borderRadius: 16,
     backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
   },
   card: {
     padding: 14,
-    borderRadius: 4,
-    borderWidth: 1,
+    borderRadius: 16,
+    borderWidth: 0,
     marginBottom: 10,
   },
   cardHeader: {
@@ -156,7 +153,7 @@ const styles = StyleSheet.create({
   iconContainer: {
     width: 28,
     height: 28,
-    borderRadius: 2,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -168,14 +165,12 @@ const styles = StyleSheet.create({
   statusBadge: {
     paddingHorizontal: 7,
     paddingVertical: 3,
-    borderRadius: 2,
-    borderWidth: 1,
-    borderColor: 'transparent',
+    borderRadius: 10,
+    borderWidth: 0,
   },
   statusText: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.6,
+    fontSize: 11,
+    fontWeight: '600',
   },
   description: {
     fontSize: 14,

@@ -4,21 +4,21 @@
   Tailwind v4 theme tokens.
   The actual hex values are injected at runtime via ThemeContext
   using root.style.setProperty('--color-primary', ...).
-  We seed defaults here so utilities like bg-primary work before
-  the JS theme provider kicks in.
 */
 @theme {
-  --color-primary:      #3b82f6;
-  --color-primary-light: #93c5fd;
-  --color-primary-dark:  #1d4ed8;
+  --color-primary:       #0b4b3b;
+  --color-primary-light: #e6f2e9;
+  --color-primary-dark:  #07382d;
+  --color-brand-green:   #0b4b3b;
+  --color-brand-orange:  #f58208;
 }
 
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
-  background-color: #f8fafc; /* slate-50 */
+  background-color: #f7f7f2;
   color: #0f172a;            /* slate-900 */
 
   font-synthesis: none;
@@ -31,58 +31,52 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-}
-
-/* ── Glassmorphism utilities ── */
-.glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-}
-
-.glass-dark {
-  background: rgba(15, 23, 42, 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: #f7f7f2;
+  color: #0f172a;
 }
 
 /* ── Custom Scrollbar ── */
-::-webkit-scrollbar        { width: 8px; height: 8px; }
+::-webkit-scrollbar        { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track  { background: transparent; }
-::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb  { background: #cbd5e1; border-radius: 9999px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-/* ── Base micro-animations ── */
-button, a {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* ── Modern Enterprise Card & Surface Styles ── */
-.command-card {
+/* ── Enterprise Surface Card Style ── */
+.enterprise-card {
   background: #ffffff;
-  border: 1px solid rgba(226, 232, 240, 0.85);
-  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid #e4e9e2;
+  border-radius: 0.75rem; /* 12px */
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-.command-card:hover {
-  border-color: rgba(203, 213, 225, 0.95);
-  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.07), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+.enterprise-card-interactive {
+  background: #ffffff;
+  border: 1px solid #e4e9e2;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  transition: all 0.15s ease;
 }
 
-.glow-pulse {
-  animation: glow-pulse-animation 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+.enterprise-card-interactive:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
 }
 
-@keyframes glow-pulse-animation {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.5;
-    transform: scale(1.15);
-  }
+/* ── Form Inputs ── */
+.form-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  color: #0f172a;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }

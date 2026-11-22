@@ -8,16 +8,12 @@ import * as Haptics from 'expo-haptics';
 interface PaginationControlProps {
   currentPage: number;
   totalPages: number;
-  totalItems: number;
-  pageSize: number;
   onPageChange: (page: number) => void;
 }
 
 export function PaginationControl({
   currentPage,
   totalPages,
-  totalItems,
-  pageSize,
   onPageChange,
 }: PaginationControlProps) {
   const systemColorScheme = useColorScheme();
@@ -30,9 +26,6 @@ export function PaginationControl({
   const colors = theme[currentTheme as 'light' | 'dark'];
 
   if (totalPages <= 1) return null;
-
-  const startItem = (currentPage - 1) * pageSize + 1;
-  const endItem = Math.min(currentPage * pageSize, totalItems);
 
   const handlePrev = () => {
     if (currentPage > 1) {
@@ -49,29 +42,27 @@ export function PaginationControl({
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <View style={styles.container}>
       <TouchableOpacity
         onPress={handlePrev}
         disabled={currentPage === 1}
         style={[
           styles.arrowBtn,
-          { 
-            backgroundColor: currentPage === 1 ? 'transparent' : colors.surface2,
-            borderColor: colors.border,
-            opacity: currentPage === 1 ? 0.4 : 1
-          }
+          { backgroundColor: colors.surface2, opacity: currentPage === 1 ? 0.4 : 1 },
         ]}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Previous page"
       >
         <IconSymbol name="chevron.left" color={colors.text} size={14} />
       </TouchableOpacity>
 
-      <View style={styles.centerInfo}>
+      <View style={styles.pageInfo}>
         <Text style={[styles.pageIndicator, { color: colors.text }]}>
-          PAGE {currentPage} OF {totalPages}
+          Page {currentPage}
         </Text>
-        <Text style={[styles.itemRange, { color: colors.textDim }]}>
-          Showing {startItem}–{endItem} of {totalItems}
+        <Text style={[styles.pageTotal, { color: colors.textDim }]}>
+          of {totalPages}
         </Text>
       </View>
 
@@ -80,13 +71,11 @@ export function PaginationControl({
         disabled={currentPage === totalPages}
         style={[
           styles.arrowBtn,
-          { 
-            backgroundColor: currentPage === totalPages ? 'transparent' : colors.surface2,
-            borderColor: colors.border,
-            opacity: currentPage === totalPages ? 0.4 : 1
-          }
+          { backgroundColor: colors.surface2, opacity: currentPage === totalPages ? 0.4 : 1 },
         ]}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel="Next page"
       >
         <IconSymbol name="chevron.right" color={colors.text} size={14} />
       </TouchableOpacity>
@@ -98,33 +87,22 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 4,
-    borderWidth: 1,
-    marginTop: 14,
-    marginBottom: 10,
+    justifyContent: 'center',
+    gap: 16,
+    marginTop: 12,
+    marginBottom: 8,
   },
   arrowBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 4,
-    borderWidth: 1,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  centerInfo: {
-    alignItems: 'center',
-  },
+  pageInfo: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pageIndicator: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.6,
+    fontSize: 14,
+    fontWeight: '600',
   },
-  itemRange: {
-    fontSize: 10,
-    marginTop: 2,
-    fontWeight: '500',
-  },
+  pageTotal: { fontSize: 14, fontWeight: '500' },
 });

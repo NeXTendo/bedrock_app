@@ -4,6 +4,31 @@ import { useAuth } from '../../contexts/AuthContext';
 import { Bell, CheckSquare } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
+const STATUS_LABELS: Record<string, string> = {
+  NEW: 'New',
+  REPORTED: 'Reported',
+  VERIFIED: 'Verified',
+  ASSIGNED: 'Assigned',
+  IN_PROGRESS: 'In progress',
+  RESOLVED: 'Resolved',
+  REJECTED: 'Rejected',
+};
+
+function formatNotificationBody(body: string): string {
+  const statusChange = body.match(/^Your report status changed to:\s*(.+)$/i);
+  if (!statusChange) return body;
+
+  const status = statusChange[1].trim().replace(/[.!?]+$/, '');
+  const normalizedStatus = status.replace(/[\s-]+/g, '_').toUpperCase();
+  const label = STATUS_LABELS[normalizedStatus] || normalizedStatus
+    .split('_')
+    .filter(Boolean)
+    .map(word => `${word.charAt(0).toUpperCase()}${word.slice(1).toLowerCase()}`)
+    .join(' ');
+
+  return `Your report is now ${label}.`;
+}
+
 export default function NotificationTray() {
   const { session } = useAuth();
   const { deptCode } = useParams<{ deptCode: string }>();
@@ -128,40 +153,46 @@ export default function NotificationTray() {
       {/* Bell Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="p-2.5 text-slate-500 hover:text-primary hover:bg-slate-50 rounded-xl relative transition-all duration-200 focus:outline-none"
+        aria-label="View notifications"
+        className="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg relative transition-colors focus:outline-none focus:ring-2 focus:ring-slate-300"
       >
-        <Bell size={20} />
+        <Bell size={18} />
         {unreadCount > 0 && (
-          <span className="absolute top-1.5 right-1.5 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-extrabold rounded-full flex items-center justify-center border border-white px-1 animate-pulse">
-            {unreadCount}
+          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 bg-red-600 text-white text-[10px] font-semibold rounded-full flex items-center justify-center border-2 border-white px-1">
+            {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
       </button>
 
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute right-0 mt-2.5 w-80 bg-white rounded-2xl border border-slate-100 shadow-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl border border-slate-200 shadow-xl z-50 overflow-hidden">
           {/* Header */}
-          <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-800">Notifications</h3>
+          <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-700">Notifications</h3>
+              {unreadCount > 0 && (
+                <span className="text-[11px] font-medium text-slate-500">({unreadCount} new)</span>
+              )}
+            </div>
             {unreadCount > 0 && (
               <button
                 onClick={handleMarkAllAsRead}
-                className="text-xs font-bold text-primary hover:text-primary-dark flex items-center space-x-1 transition-colors"
+                className="text-xs font-medium text-primary hover:text-primary-dark flex items-center gap-1 transition-colors"
               >
-                <CheckSquare size={13} />
+                <CheckSquare size={12} />
                 <span>Mark all read</span>
               </button>
             )}
           </div>
 
           {/* List */}
-          <div className="max-h-[320px] overflow-y-auto divide-y divide-slate-50">
+          <div className="max-h-[320px] overflow-y-auto divide-y divide-slate-100">
             {notifications.length === 0 ? (
               <div className="p-8 text-center text-slate-400">
-                <Bell className="mx-auto text-slate-200 mb-2" size={32} />
-                <p className="text-xs font-bold">All quiet here</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">No recent notifications</p>
+                <Bell className="mx-auto text-slate-300 mb-2" size={28} />
+                <p className="text-xs font-semibold text-slate-600">No notifications</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">You're caught up with all updates</p>
               </div>
             ) : (
               notifications.map((n) => {
@@ -172,17 +203,17 @@ export default function NotificationTray() {
                   <div
                     key={n.id}
                     onClick={() => handleMarkAsRead(n.id, reportId)}
-                    className={`p-4 hover:bg-slate-50 transition-colors cursor-pointer flex items-start space-x-3 ${isUnread ? 'bg-slate-50/40' : ''}`}
+                    className={`p-3.5 hover:bg-slate-50 transition-colors cursor-pointer flex items-start gap-2.5 ${isUnread ? 'bg-blue-50/40' : ''}`}
                   >
-                    <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${isUnread ? 'bg-primary' : 'bg-transparent'}`} />
+                    <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${isUnread ? 'bg-primary' : 'bg-transparent'}`} />
                     <div className="flex-1 min-w-0">
-                      <p className={`text-xs font-bold text-slate-800 truncate ${isUnread ? 'font-extrabold' : ''}`}>
+                      <p className={`text-xs text-slate-800 truncate ${isUnread ? 'font-semibold text-slate-900' : 'font-medium'}`}>
                         {n.title}
                       </p>
-                      <p className="text-xs text-slate-500 mt-0.5 leading-normal">
-                        {n.body}
+                      <p className="text-xs text-slate-500 mt-0.5 line-clamp-2 leading-relaxed">
+                        {formatNotificationBody(typeof n.body === 'string' ? n.body : '')}
                       </p>
-                      <span className="text-[10px] text-slate-400 font-semibold block mt-1.5">
+                      <span className="text-[10px] text-slate-400 font-medium block mt-1">
                         {formatRelativeTime(n.sent_at)}
                       </span>
                     </div>

@@ -1,10 +1,12 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   TouchableOpacity,
   Image,
+  Modal,
+  Linking,
   ScrollView,
   ActivityIndicator,
   Alert,
@@ -23,6 +25,7 @@ import { theme } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useRecentlyViewedStore } from '@/stores/useRecentlyViewedStore';
 import * as Haptics from 'expo-haptics';
@@ -31,7 +34,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -47,12 +50,16 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
+function getReportPhotoUrl(imageUrl: string): string {
+  return `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/report-photos/${imageUrl}`;
+}
+
 const LIFECYCLE_STAGES = [
-  { key: 'reported',    label: 'Reported',    icon: 'flag.fill' },
-  { key: 'verified',    label: 'Verified',    icon: 'checkmark.seal.fill' },
-  { key: 'assigned',    label: 'Assigned',    icon: 'person.crop.circle.badge.checkmark' },
-  { key: 'in_progress', label: 'In progress', icon: 'hammer.fill' },
-  { key: 'resolved',    label: 'Resolved',    icon: 'checkmark.circle.fill' },
+  { key: 'reported', label: 'Reported' },
+  { key: 'verified', label: 'Verified' },
+  { key: 'assigned', label: 'Assigned' },
+  { key: 'in_progress', label: 'In progress' },
+  { key: 'resolved', label: 'Resolved' },
 ];
 
 function getStageIndex(status: string): number {
@@ -64,34 +71,34 @@ function getStageIndex(status: string): number {
   return 0;
 }
 
-function getDepartment(categoryName?: string): { dept: string; est: string } {
+function getDepartment(categoryName?: string): string {
   const cat = categoryName?.toLowerCase() || '';
   if (cat.includes('road') || cat.includes('pothole') || cat.includes('traffic'))
-    return { dept: 'Roads & Civil Infrastructure', est: '2–5 days' };
+    return 'Roads & Civil Infrastructure';
   if (cat.includes('water') || cat.includes('drain') || cat.includes('pipe'))
-    return { dept: 'Water & Sanitation Authority', est: '1–3 days' };
+    return 'Water & Sanitation Authority';
   if (cat.includes('power') || cat.includes('light') || cat.includes('electric'))
-    return { dept: 'Energy & Electrical Services', est: '4–8 hrs' };
+    return 'Energy & Electrical Services';
   if (cat.includes('waste') || cat.includes('trash') || cat.includes('garbage'))
-    return { dept: 'Environmental Health', est: '24 hrs' };
-  return { dept: 'Municipal Public Works', est: '3–7 days' };
+    return 'Environmental Health';
+  return 'Municipal Public Works';
 }
 
-function getPriority(confirmations: number): { label: string; color: string; desc: string } {
-  if (confirmations >= 10) return { label: 'Critical',  color: '#ef4444', desc: 'Immediate municipal response required' };
-  if (confirmations >= 5)  return { label: 'High',      color: '#f59e0b', desc: 'Escalated to senior operations team' };
-  if (confirmations >= 2)  return { label: 'Moderate',  color: '#60a5fa', desc: 'Scheduled for next available crew' };
-  return                          { label: 'Standard',  color: '#71717a', desc: 'Logged and queued for review' };
+function getPriority(confirmations: number, colors: typeof theme.light): { label: string; color: string; desc: string } {
+  if (confirmations >= 10) return { label: 'Critical',  color: colors.error, desc: 'Immediate municipal response required' };
+  if (confirmations >= 5)  return { label: 'High',      color: colors.warning, desc: 'Escalated to senior operations team' };
+  if (confirmations >= 2)  return { label: 'Moderate',  color: colors.info, desc: 'Scheduled for next available crew' };
+  return                          { label: 'Standard',  color: colors.textDim, desc: 'Logged and queued for review' };
 }
 
-function getStatusColor(status: string): string {
+function getStatusColor(status: string, colors: typeof theme.light): string {
   switch (status?.toLowerCase()) {
-    case 'reported':    return '#71717a';
-    case 'verified':    return '#60a5fa';
+    case 'reported':    return colors.textDim;
+    case 'verified':    return colors.info;
     case 'assigned':
-    case 'in_progress': return '#f59e0b';
-    case 'resolved':    return '#4ade80';
-    default:            return '#52525b';
+    case 'in_progress': return colors.warning;
+    case 'resolved':    return colors.success;
+    default:            return colors.textMuted;
   }
 }
 
@@ -102,13 +109,13 @@ function getStatusLabel(status: string): string {
 }
 
 // ─── Section header ────────────────────────────────────────────────────────────
-function SectionHeader({ label, colors }: { label: string; colors: any }) {
+function SectionHeader({ label, colors }: { label: string; colors: typeof theme.light }) {
   return (
-    <Text style={[sectionHeaderStyle.label, { color: colors.textDim }]}>{label}</Text>
+    <Text style={[sectionHeaderStyle.label, { color: colors.text }]}>{label}</Text>
   );
 }
 const sectionHeaderStyle = StyleSheet.create({
-  label: { fontSize: 12, fontWeight: '600', marginBottom: 10, marginTop: 4 },
+  label: { fontSize: 16, fontWeight: '700', marginBottom: 9, marginTop: 12 },
 });
 
 // ─── Carousel report card (for nearby / recently viewed) ──────────────────────
@@ -117,7 +124,7 @@ function ReportCarouselCard({ report, onPress, colors }: {
   onPress: () => void;
   colors: any;
 }) {
-  const sc = getStatusColor(report.status);
+  const sc = getStatusColor(report.status, colors);
   const photo = report.photoUrl || (report.report_photos?.[0]
     ? `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/report-photos/${report.report_photos[0].image_url}`
     : null);
@@ -135,7 +142,7 @@ function ReportCarouselCard({ report, onPress, colors }: {
           <View style={[carouselCardStyle.imgPlaceholder, { backgroundColor: colors.surface2 }]}>
             <IconSymbol
               name={report.categoryIcon || report.categories?.icon || 'flag.fill'}
-              color={report.categoryColor || report.categories?.color || colors.accent}
+              color={colors.accent}
               size={22}
             />
           </View>
@@ -148,7 +155,7 @@ function ReportCarouselCard({ report, onPress, colors }: {
       </View>
 
       <View style={carouselCardStyle.body}>
-        <Text style={[carouselCardStyle.category, { color: report.categoryColor || report.categories?.color || colors.accent }]} numberOfLines={1}>
+        <Text style={[carouselCardStyle.category, { color: colors.accent }]} numberOfLines={1}>
           {report.categoryName || report.categories?.name || 'Report'}
         </Text>
         <Text style={[carouselCardStyle.desc, { color: colors.text }]} numberOfLines={2}>
@@ -239,9 +246,14 @@ export default function ReportDetailsScreen() {
   const { hapticsEnabled, theme: storeTheme } = useSettingsStore();
   const queryClient = useQueryClient();
   const userId = useAuthStore(state => state.session?.user?.id);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<any>(null);
   const { recent, addRecent } = useRecentlyViewedStore();
   const [intelExpanded, setIntelExpanded] = useState(false);
+  const [photoPosition, setPhotoPosition] = useState<{ reportId: string | undefined; index: number }>({
+    reportId: undefined,
+    index: 0,
+  });
+  const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
 
   const currentTheme = storeTheme === 'auto' ? (systemColorScheme || 'light') : storeTheme;
   const colors = theme[currentTheme as 'light' | 'dark'];
@@ -257,7 +269,7 @@ export default function ReportDetailsScreen() {
         .select(`
           *,
           categories (*),
-          report_photos (image_url),
+          report_photos (image_url, is_primary, uploaded_at),
           profiles:user_id (full_name),
           status_history (*, changed_by_profile:profiles!status_history_changed_by_fkey (full_name)),
           comments (*, comment_profile:profiles!comments_user_id_fkey (full_name))
@@ -270,6 +282,15 @@ export default function ReportDetailsScreen() {
     enabled: !!id,
   });
 
+  const reportPhotoUrls = useMemo(() => [...(report?.report_photos || [])]
+    .sort((first, second) => {
+      const primaryDifference = Number(Boolean(second.is_primary)) - Number(Boolean(first.is_primary));
+      if (primaryDifference !== 0) return primaryDifference;
+      return (first.uploaded_at || '').localeCompare(second.uploaded_at || '');
+    })
+    .map(photo => getReportPhotoUrl(photo.image_url)), [report?.report_photos]);
+  const activePhotoIndex = photoPosition.reportId === report?.id ? photoPosition.index : 0;
+
   // ── Record recently viewed ──
   useEffect(() => {
     if (!report) return;
@@ -281,12 +302,10 @@ export default function ReportDetailsScreen() {
       categoryName: report.categories?.name,
       categoryIcon: report.categories?.icon,
       categoryColor: report.categories?.color,
-      photoUrl: report.report_photos?.[0]
-        ? `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/report-photos/${report.report_photos[0].image_url}`
-        : undefined,
+      photoUrl: reportPhotoUrls[0],
       viewedAt: Date.now(),
     });
-  }, [report?.id]);
+  }, [report, reportPhotoUrls, addRecent]);
 
   // ── Nearby reports (same category, within ~1km grid) ──
   const { data: nearbyReports } = useQuery({
@@ -387,7 +406,7 @@ export default function ReportDetailsScreen() {
     return (
       <View style={[styles.centered, { backgroundColor: colors.background }]}>
         <IconSymbol name="exclamationmark.triangle.fill" color={colors.error} size={36} />
-        <Text style={[styles.errorTitle, { color: colors.text }]}>Couldn't load report</Text>
+        <Text style={[styles.errorTitle, { color: colors.text }]}>Couldn&apos;t load report</Text>
         <Text style={[styles.errorSub, { color: colors.textDim }]}>{(queryError as any)?.message || 'Not found'}</Text>
         <TouchableOpacity
           style={[styles.retryBtn, { backgroundColor: colors.surface2, borderColor: colors.border }]}
@@ -401,12 +420,32 @@ export default function ReportDetailsScreen() {
 
   const isOwner = !!(userId && report.user_id === userId);
   const currentStage = getStageIndex(report.status);
-  const statusColor = getStatusColor(report.status);
-  const { dept, est } = getDepartment(report.categories?.name);
-  const priority = getPriority(report.confirmation_count || 0);
-  const photoUrl = report.report_photos?.[0]
-    ? `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/report-photos/${report.report_photos[0].image_url}`
-    : null;
+  const statusColor = getStatusColor(report.status, colors);
+  const dept = getDepartment(report.categories?.name);
+  const priority = getPriority(report.confirmation_count || 0, colors);
+  const photoUrl = reportPhotoUrls[0] || null;
+  const latitude = Number(report.latitude);
+  const longitude = Number(report.longitude);
+
+  const openReportLocation = async () => {
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      Alert.alert('Location unavailable', 'This report does not have valid map coordinates.');
+      return;
+    }
+
+    const placeName = encodeURIComponent(report.address || 'Report location');
+    const mapUrl = Platform.select({
+      ios: `http://maps.apple.com/?ll=${latitude},${longitude}&q=${placeName}`,
+      android: `geo:${latitude},${longitude}?q=${latitude},${longitude}(${placeName})`,
+      default: `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`,
+    });
+
+    try {
+      await Linking.openURL(mapUrl || `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`);
+    } catch {
+      Alert.alert('Unable to open map', 'Please try opening the location again.');
+    }
+  };
 
   const recentOthers = recent.filter(r => r.id !== id).slice(0, 4);
 
@@ -465,9 +504,39 @@ export default function ReportDetailsScreen() {
         {/* ── Hero photo ── */}
         {photoUrl ? (
           <View style={styles.heroWrap}>
-            <Image source={{ uri: photoUrl }} style={styles.heroImg} />
+            <ScrollView
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={event => {
+                setPhotoPosition({
+                  reportId: report.id,
+                  index: Math.round(event.nativeEvent.contentOffset.x / SCREEN_W),
+                });
+              }}
+            >
+              {reportPhotoUrls.map((uri, index) => (
+                <TouchableOpacity
+                  key={`${uri}-${index}`}
+                  activeOpacity={0.95}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View photo ${index + 1} full screen`}
+                  onPress={() => {
+                    setPhotoPosition({ reportId: report.id, index });
+                    setPhotoViewerVisible(true);
+                  }}
+                >
+                  <Image source={{ uri }} style={[styles.heroImg, { width: SCREEN_W }]} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            {reportPhotoUrls.length > 1 && (
+              <View style={styles.photoCount}>
+                <Text style={styles.photoCountText}>{activePhotoIndex + 1} / {reportPhotoUrls.length}</Text>
+              </View>
+            )}
             <View style={styles.heroOverlay}>
-              <View style={[styles.categoryChip, { backgroundColor: report.categories?.color || colors.accent }]}>
+              <View style={[styles.categoryChip, { backgroundColor: colors.accent }]}>
                 <IconSymbol name={report.categories?.icon || 'flag.fill'} color="#fff" size={12} />
                 <Text style={styles.categoryChipText}>{report.categories?.name || 'Report'}</Text>
               </View>
@@ -478,12 +547,12 @@ export default function ReportDetailsScreen() {
           </View>
         ) : (
           /* No photo — coloured banner */
-          <View style={[styles.bannerNoPhoto, { backgroundColor: (report.categories?.color || colors.accent) + '18' }]}>
-            <View style={[styles.bannerIconCircle, { backgroundColor: (report.categories?.color || colors.accent) + '25' }]}>
-              <IconSymbol name={report.categories?.icon || 'flag.fill'} color={report.categories?.color || colors.accent} size={28} />
+          <View style={[styles.bannerNoPhoto, { backgroundColor: colors.accentSoft }]}>
+            <View style={[styles.bannerIconCircle, { backgroundColor: colors.surface }]}>
+              <IconSymbol name={report.categories?.icon || 'flag.fill'} color={colors.accent} size={28} />
             </View>
             <View>
-              <Text style={[styles.bannerCategory, { color: report.categories?.color || colors.accent }]}>
+              <Text style={[styles.bannerCategory, { color: colors.accent }]}>
                 {report.categories?.name || 'Report'}
               </Text>
               <View style={[styles.statusChip, { backgroundColor: statusColor }]}>
@@ -495,30 +564,11 @@ export default function ReportDetailsScreen() {
 
         <View style={styles.body}>
           {/* ── Description ── */}
-          <Text style={[styles.description, { color: colors.text }]}>
-            {report.description || 'No description provided.'}
-          </Text>
-
-          {/* ── Reporter row ── */}
-          <View style={[styles.reporterRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.avatar, { backgroundColor: colors.accentSoft }]}>
-              <Text style={[styles.avatarText, { color: colors.accent }]}>
-                {(report.profiles?.full_name || 'C').charAt(0).toUpperCase()}
-              </Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.reporterName, { color: colors.text }]}>
-                {isOwner ? 'You' : (report.profiles?.full_name || 'Anonymous citizen')}
-              </Text>
-              <Text style={[styles.reporterSub, { color: colors.textDim }]}>
-                Reported {timeAgo(report.created_at)} · Lusaka
-              </Text>
-            </View>
-            {isOwner && (
-              <View style={[styles.ownerPill, { backgroundColor: colors.accentSoft, borderColor: colors.accent + '40' }]}>
-                <Text style={[styles.ownerPillText, { color: colors.accent }]}>Your report</Text>
-              </View>
-            )}
+          <SectionHeader label="Description" colors={colors} />
+          <View style={[styles.descriptionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.description, { color: colors.text }]}>
+              {report.description || 'No description provided.'}
+            </Text>
           </View>
 
           {/* ── Resolution progress (tap to open full field log) ── */}
@@ -540,53 +590,122 @@ export default function ReportDetailsScreen() {
             </View>
 
             <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={styles.stageRow}>
-                {LIFECYCLE_STAGES.map((st, idx) => {
-                  const passed  = idx < currentStage;
-                  const current = idx === currentStage;
-                  return (
-                    <React.Fragment key={st.key}>
-                      <View style={styles.stageItem}>
-                        <View style={[
-                          styles.stageDot,
-                          passed  && { backgroundColor: colors.success, borderColor: colors.success },
-                          current && { backgroundColor: colors.accent,  borderColor: colors.accent },
-                          !passed && !current && { backgroundColor: colors.surface2, borderColor: colors.border },
-                        ]}>
-                          {passed  && <IconSymbol name="checkmark" color="#fff" size={9} />}
-                          {current && <View style={[styles.stageDotInner, { backgroundColor: colors.background }]} />}
-                        </View>
-                        <Text style={[
-                          styles.stageLabel,
-                          { color: current ? colors.accent : passed ? colors.text : colors.textDim },
-                          current && { fontWeight: '700' },
-                        ]} numberOfLines={1}>
-                          {st.label}
-                        </Text>
-                      </View>
-                      {idx < LIFECYCLE_STAGES.length - 1 && (
-                        <View style={[styles.stageConnector, { backgroundColor: passed ? colors.success : colors.border }]} />
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </View>
-
-              <View style={[styles.progressActionRow, { borderTopColor: colors.border }]}>
-                <Text style={[styles.stageNote, { color: colors.textDim }]}>
-                  Stage {currentStage + 1} of {LIFECYCLE_STAGES.length} · Est: {est}
-                </Text>
-                <View style={styles.progressActionRight}>
-                  <Text style={[styles.progressActionLink, { color: colors.accent }]}>
-                    Full dispatch trail ({report.status_history?.length || 0})
+              <View style={styles.progressSummary}>
+                <View style={styles.progressStatus}>
+                  <View style={[styles.progressStatusDot, { backgroundColor: statusColor }]} />
+                  <Text style={[styles.progressStatusLabel, { color: colors.text }]}>
+                    {getStatusLabel(report.status)}
                   </Text>
-                  <IconSymbol name="chevron.right" color={colors.accent} size={11} />
                 </View>
+                <Text style={[styles.progressStepCount, { color: colors.textDim }]}>
+                  Stage {currentStage + 1} of {LIFECYCLE_STAGES.length}
+                </Text>
+              </View>
+              <View style={styles.progressTrack}>
+                {LIFECYCLE_STAGES.map((stage, index) => (
+                  <View
+                    key={stage.key}
+                    style={[
+                      styles.progressSegment,
+                      {
+                        backgroundColor: index < currentStage
+                          ? colors.success
+                          : index === currentStage
+                            ? colors.accent
+                            : colors.surface2,
+                      },
+                    ]}
+                  />
+                ))}
+              </View>
+              <View style={styles.progressEndpoints}>
+                <Text style={[styles.progressEndpointLabel, { color: colors.textDim }]}>
+                  {LIFECYCLE_STAGES[0].label}
+                </Text>
+                <Text style={[styles.progressEndpointLabel, { color: colors.textDim }]}>
+                  {LIFECYCLE_STAGES[LIFECYCLE_STAGES.length - 1].label}
+                </Text>
               </View>
             </View>
           </TouchableOpacity>
 
-          {/* ── Intelligence panel (collapsible) ── */}
+          {/* ── Location & Mini map ── */}
+          <SectionHeader label="Location" colors={colors} />
+          <TouchableOpacity
+            style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, overflow: 'hidden', padding: 0 }]}
+            onPress={openReportLocation}
+            activeOpacity={0.88}
+            accessibilityRole="button"
+            accessibilityLabel={`Open map at ${report.address || 'report location'}`}
+          >
+            <MapView
+              style={styles.miniMap}
+              initialRegion={{
+                latitude,
+                longitude,
+                latitudeDelta: 0.008,
+                longitudeDelta: 0.008,
+              }}
+              pointerEvents="none"
+              scrollEnabled={false}
+              zoomEnabled={false}
+              pitchEnabled={false}
+              rotateEnabled={false}
+              userInterfaceStyle={currentTheme as 'light' | 'dark'}
+            >
+              <Circle
+                center={{ latitude, longitude }}
+                radius={60}
+                fillColor={colors.accent + '30'}
+                strokeColor={colors.accent + '80'}
+                strokeWidth={1.5}
+              />
+              <Marker
+                coordinate={{ latitude, longitude }}
+                pinColor={colors.accent}
+              />
+            </MapView>
+            <View style={[styles.mapMeta, { borderTopColor: colors.border }]}>
+              <IconSymbol name="mappin.and.ellipse" color={colors.accent} size={14} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.mapAddress, { color: colors.text }]} numberOfLines={2}>
+                  {report.address || 'View report location'}
+                </Text>
+                <Text style={[styles.mapCoords, { color: colors.textDim }]}>
+                  {Math.abs(latitude).toFixed(4)}° S, {Math.abs(longitude).toFixed(4)}° E
+                </Text>
+              </View>
+              <View style={styles.mapAction}>
+                <Text style={[styles.mapActionText, { color: colors.accent }]}>Open map</Text>
+                <IconSymbol name="chevron.right" color={colors.accent} size={13} />
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          {/* ── Report details ── */}
+          <SectionHeader label="Reported by" colors={colors} />
+          <View style={[styles.reporterRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.avatar, { backgroundColor: colors.accentSoft }]}>
+              <Text style={[styles.avatarText, { color: colors.accent }]}>
+                {(report.profiles?.full_name || 'C').charAt(0).toUpperCase()}
+              </Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.reporterName, { color: colors.text }]}>
+                {isOwner ? 'You' : (report.profiles?.full_name || 'Anonymous citizen')}
+              </Text>
+              <Text style={[styles.reporterSub, { color: colors.textDim }]}>
+                {timeAgo(report.created_at)} · Lusaka
+              </Text>
+            </View>
+            {isOwner && (
+              <View style={[styles.ownerPill, { backgroundColor: colors.accentSoft, borderColor: colors.accent + '40' }]}>
+                <Text style={[styles.ownerPillText, { color: colors.accent }]}>Your report</Text>
+              </View>
+            )}
+          </View>
+
+          {/* ── Issue intelligence ── */}
           <TouchableOpacity
             onPress={() => {
               if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -597,7 +716,7 @@ export default function ReportDetailsScreen() {
             activeOpacity={0.75}
           >
             <View style={styles.collapseHeaderLeft}>
-              <Text style={[styles.collapseLabel, { color: colors.textDim }]}>Issue intelligence</Text>
+              <Text style={[styles.collapseLabel, { color: colors.text }]}>Issue intelligence</Text>
               {!intelExpanded && (
                 <View style={[styles.priorityPillSmall, { backgroundColor: priority.color + '20' }]}>
                   <Text style={[styles.priorityPillSmallText, { color: priority.color }]}>
@@ -620,7 +739,6 @@ export default function ReportDetailsScreen() {
 
           {intelExpanded && (
             <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 4 }]}>
-              {/* Priority */}
               <View style={[styles.intelRow, { borderBottomColor: colors.border }]}>
                 <View style={styles.intelLeft}>
                   <View style={[styles.intelIcon, { backgroundColor: priority.color + '20' }]}>
@@ -635,7 +753,6 @@ export default function ReportDetailsScreen() {
                   {priority.desc}
                 </Text>
               </View>
-              {/* Department */}
               <View style={[styles.intelRow, { borderBottomColor: colors.border }]}>
                 <View style={styles.intelLeft}>
                   <View style={[styles.intelIcon, { backgroundColor: colors.accentSoft }]}>
@@ -647,7 +764,6 @@ export default function ReportDetailsScreen() {
                   </View>
                 </View>
               </View>
-              {/* Confirmations */}
               <View style={[styles.intelRow, { borderBottomColor: colors.border }]}>
                 <View style={styles.intelLeft}>
                   <View style={[styles.intelIcon, { backgroundColor: colors.info + '20' }]}>
@@ -661,64 +777,8 @@ export default function ReportDetailsScreen() {
                   </View>
                 </View>
               </View>
-              {/* Response target */}
-              <View style={[styles.intelRowLast]}>
-                <View style={styles.intelLeft}>
-                  <View style={[styles.intelIcon, { backgroundColor: colors.success + '20' }]}>
-                    <IconSymbol name="clock.fill" color={colors.success} size={14} />
-                  </View>
-                  <View>
-                    <Text style={[styles.intelKey, { color: colors.textDim }]}>Estimated response</Text>
-                    <Text style={[styles.intelVal, { color: colors.text }]}>
-                      {report.status === 'resolved' ? 'Completed' : est}
-                    </Text>
-                  </View>
-                </View>
-              </View>
             </View>
           )}
-
-          {/* ── Location & Mini map ── */}
-          <SectionHeader label="Location" colors={colors} />
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, overflow: 'hidden', padding: 0 }]}>
-            <MapView
-              style={styles.miniMap}
-              initialRegion={{
-                latitude: Number(report.latitude),
-                longitude: Number(report.longitude),
-                latitudeDelta: 0.008,
-                longitudeDelta: 0.008,
-              }}
-              scrollEnabled={false}
-              zoomEnabled={false}
-              pitchEnabled={false}
-              rotateEnabled={false}
-              userInterfaceStyle={currentTheme as 'light' | 'dark'}
-            >
-              <Circle
-                center={{ latitude: Number(report.latitude), longitude: Number(report.longitude) }}
-                radius={60}
-                fillColor={(report.categories?.color || colors.accent) + '30'}
-                strokeColor={(report.categories?.color || colors.accent) + '80'}
-                strokeWidth={1.5}
-              />
-              <Marker
-                coordinate={{ latitude: Number(report.latitude), longitude: Number(report.longitude) }}
-                pinColor={report.categories?.color || colors.accent}
-              />
-            </MapView>
-            <View style={[styles.mapMeta, { borderTopColor: colors.border }]}>
-              <IconSymbol name="mappin.and.ellipse" color={colors.accent} size={14} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.mapAddress, { color: colors.text }]}>{report.address}</Text>
-                <Text style={[styles.mapCoords, { color: colors.textDim }]}>
-                  {Math.abs(Number(report.latitude)).toFixed(4)}° S, {Math.abs(Number(report.longitude)).toFixed(4)}° E
-                </Text>
-              </View>
-            </View>
-          </View>
-
-
 
           {/* ── Nearby problems (Carousel) ── */}
           {nearbyReports && nearbyReports.length > 0 && (
@@ -765,6 +825,59 @@ export default function ReportDetailsScreen() {
           )}
         </View>
       </ScrollView>
+
+      {photoViewerVisible && (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+          onRequestClose={() => setPhotoViewerVisible(false)}
+        >
+          <View style={styles.photoViewer}>
+            <StatusBar style="light" />
+            <ScrollView
+              horizontal
+              pagingEnabled
+              bounces={false}
+              showsHorizontalScrollIndicator={false}
+              contentOffset={{ x: SCREEN_W * activePhotoIndex, y: 0 }}
+              onMomentumScrollEnd={event => {
+                setPhotoPosition({
+                  reportId: report.id,
+                  index: Math.round(event.nativeEvent.contentOffset.x / SCREEN_W),
+                });
+              }}
+            >
+              {reportPhotoUrls.map((uri, index) => (
+                <Image
+                  key={`${uri}-${index}`}
+                  source={{ uri }}
+                  style={{ width: SCREEN_W, height: SCREEN_H }}
+                  resizeMode="contain"
+                  accessibilityLabel={`Report photo ${index + 1} of ${reportPhotoUrls.length}`}
+                />
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.photoViewerClose, { top: insets.top + 10 }]}
+              onPress={() => setPhotoViewerVisible(false)}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Close full-screen photo"
+            >
+              <IconSymbol name="xmark.circle.fill" color="#fff" size={30} />
+            </TouchableOpacity>
+            {reportPhotoUrls.length > 1 && (
+              <View style={[styles.photoViewerCount, { bottom: Math.max(insets.bottom, 14) + 10 }]}>
+                <Text style={styles.photoCountText}>
+                  {activePhotoIndex + 1} / {reportPhotoUrls.length}
+                </Text>
+              </View>
+            )}
+          </View>
+        </Modal>
+      )}
 
       {/* ── Footer CTA ── */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 12, backgroundColor: colors.surface, borderTopColor: colors.border }]}>
@@ -862,6 +975,16 @@ const styles = StyleSheet.create({
   /* Hero */
   heroWrap: { width: '100%', height: 240, position: 'relative' },
   heroImg: { width: '100%', height: '100%' },
+  photoCount: {
+    position: 'absolute',
+    top: 12,
+    right: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+  },
+  photoCountText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   heroOverlay: {
     position: 'absolute',
     bottom: 12,
@@ -902,7 +1025,13 @@ const styles = StyleSheet.create({
 
   /* Body */
   body: { paddingHorizontal: 16, paddingTop: 18 },
-  description: { fontSize: 17, fontWeight: '600', lineHeight: 26, marginBottom: 16 },
+  descriptionCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 16,
+    marginBottom: 20,
+  },
+  description: { fontSize: 15, fontWeight: '400', lineHeight: 23 },
 
   /* Reporter */
   reporterRow: {
@@ -935,23 +1064,23 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 20,
   },
-  stageRow: {
+  progressSummary: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 10,
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  stageItem: { alignItems: 'center', flex: 1 },
-  stageDot: {
-    width: 20, height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    justifyContent: 'center', alignItems: 'center',
-    marginBottom: 5,
+  progressStatus: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  progressStatusDot: { width: 9, height: 9, borderRadius: 5 },
+  progressStatusLabel: { fontSize: 15, fontWeight: '700' },
+  progressStepCount: { fontSize: 12, fontWeight: '500' },
+  progressTrack: { flexDirection: 'row', gap: 5, marginTop: 14 },
+  progressSegment: { height: 7, borderRadius: 4, flex: 1 },
+  progressEndpoints: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
   },
-  stageDotInner: { width: 5, height: 5, borderRadius: 2.5 },
-  stageConnector: { flex: 1, height: 2, marginTop: 9, marginHorizontal: -2 },
-  stageLabel: { fontSize: 9, fontWeight: '500', textAlign: 'center' },
-  stageNote: { fontSize: 11, textAlign: 'center', marginTop: 4 },
+  progressEndpointLabel: { fontSize: 10, fontWeight: '500' },
 
   /* Intel */
   intelRow: {
@@ -960,12 +1089,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 10,
-  },
-  intelRowLast: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: 12,
     gap: 10,
   },
   intelLeft: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
@@ -989,6 +1112,25 @@ const styles = StyleSheet.create({
   },
   mapAddress: { fontSize: 13, fontWeight: '500' },
   mapCoords: { fontSize: 10, marginTop: 2 },
+  mapAction: { flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: 8 },
+  mapActionText: { fontSize: 11, fontWeight: '600' },
+
+  /* Full-screen photo viewer */
+  photoViewer: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
+  photoViewerClose: {
+    position: 'absolute',
+    right: 16,
+    zIndex: 2,
+    padding: 6,
+  },
+  photoViewerCount: {
+    position: 'absolute',
+    alignSelf: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
 
   /* Progress section header & link */
   sectionHeaderRow: {
@@ -1006,23 +1148,6 @@ const styles = StyleSheet.create({
   },
   fieldLogBadgeText: {
     fontSize: 12,
-    fontWeight: '600',
-  },
-  progressActionRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 10,
-    marginTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  progressActionRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  progressActionLink: {
-    fontSize: 11,
     fontWeight: '600',
   },
 

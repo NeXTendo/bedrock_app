@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { Search, Filter, ChevronRight, AlertCircle, Clock, CheckCircle } from 'lucide-react';
+import {
+  Search, ChevronRight, AlertCircle, Clock, CheckCircle2,
+  XCircle, MapPin, X
+} from 'lucide-react';
 
 interface ReportRow {
   id: string;
   description: string;
   status: string;
   severity: string;
+  address?: string;
   created_at: string;
   categories: { name: string; icon: string; color: string } | null;
 }
@@ -16,6 +20,8 @@ export default function ReportList() {
   const { deptCode } = useParams<{ deptCode: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(searchParams.get('q') || '');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [severityFilter, setSeverityFilter] = useState('ALL');
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -30,179 +36,325 @@ export default function ReportList() {
     async function fetchReports() {
       setLoading(true);
       if (!deptCode) return;
-      
+
       const { data: dept } = await supabase
         .from('departments')
         .select('id')
         .eq('code', deptCode.toUpperCase())
         .single();
-        
+
       if (dept) {
         const { data: categories } = await supabase
           .from('categories')
           .select('id')
           .eq('dept_id', dept.id);
-          
+
         const categoryIds = (categories as { id: string }[] | null)?.map(c => c.id) || [];
-        
+
         if (categoryIds.length > 0) {
           const { data } = await supabase
             .from('reports')
             .select('*, categories(name, icon, color)')
             .in('category_id', categoryIds)
             .order('created_at', { ascending: false });
-            
+
           setReports(data || []);
+        } else {
+          setReports([]);
         }
       }
       setLoading(false);
     }
-    
+
     fetchReports();
   }, [deptCode]);
 
-  const getStatusColor = (status: string) => {
-    switch(status) {
-      case 'NEW': return 'bg-orange-100 text-orange-700 border-orange-200';
-      case 'IN_PROGRESS': return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'RESOLVED': return 'bg-green-100 text-green-700 border-green-200';
-      default: return 'bg-slate-100 text-slate-700 border-slate-200';
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'NEW':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+            <AlertCircle size={12} />
+            <span>New</span>
+          </span>
+        );
+      case 'IN_PROGRESS':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+            <Clock size={12} />
+            <span>In Progress</span>
+          </span>
+        );
+      case 'RESOLVED':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <CheckCircle2 size={12} />
+            <span>Resolved</span>
+          </span>
+        );
+      case 'REJECTED':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+            <XCircle size={12} />
+            <span>Rejected</span>
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+            {status}
+          </span>
+        );
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch(status) {
-      case 'NEW': return <AlertCircle size={14} className="mr-1" />;
-      case 'IN_PROGRESS': return <Clock size={14} className="mr-1" />;
-      case 'RESOLVED': return <CheckCircle size={14} className="mr-1" />;
-      default: return null;
+  const getSeverityBadge = (severity: string) => {
+    switch (severity?.toLowerCase()) {
+      case 'critical':
+        return (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold uppercase bg-red-50 text-red-700 border border-red-200">
+            Critical
+          </span>
+        );
+      case 'high':
+        return (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-semibold uppercase bg-amber-50 text-amber-800 border border-amber-200">
+            High
+          </span>
+        );
+      case 'normal':
+      default:
+        return (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium uppercase bg-slate-100 text-slate-600 border border-slate-200">
+            {severity || 'Normal'}
+          </span>
+        );
     }
   };
 
   const filteredReports = reports.filter(r => {
-    if (!search.trim()) return true;
-    const query = search.toLowerCase();
-    return (
-      r.id.toLowerCase().includes(query) ||
-      (r.description || '').toLowerCase().includes(query) ||
-      (r.categories?.name || '').toLowerCase().includes(query) ||
-      (r.status || '').toLowerCase().includes(query) ||
-      (r.severity || '').toLowerCase().includes(query)
-    );
+    // Search query
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      const match =
+        r.id.toLowerCase().includes(q) ||
+        (r.description || '').toLowerCase().includes(q) ||
+        (r.address || '').toLowerCase().includes(q) ||
+        (r.categories?.name || '').toLowerCase().includes(q);
+      if (!match) return false;
+    }
+
+    // Status filter
+    if (statusFilter !== 'ALL' && r.status !== statusFilter) {
+      return false;
+    }
+
+    // Severity filter
+    if (severityFilter !== 'ALL' && r.severity?.toLowerCase() !== severityFilter.toLowerCase()) {
+      return false;
+    }
+
+    return true;
   });
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-5">
+      {/* Page Title & Filter Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Active Reports</h1>
-          <p className="text-slate-500 text-sm mt-1">Manage issues assigned to your department.</p>
+          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Incident Reports</h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Review incoming citizen reports, triage priority, and dispatch departmental staff.
+          </p>
         </div>
-        
-        <div className="flex space-x-3 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input 
-              type="text" 
-              value={search}
-              onChange={e => {
-                setSearch(e.target.value);
-                if (e.target.value) {
-                  setSearchParams({ q: e.target.value });
-                } else {
-                  setSearchParams({});
-                }
-              }}
-              placeholder="Search reports..." 
-              className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm"
-            />
-          </div>
-          <button className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 flex items-center space-x-2 text-sm font-medium transition-colors shadow-sm">
-            <Filter size={18} />
-            <span className="hidden sm:inline">Filter</span>
-          </button>
+
+        <div className="text-xs text-slate-500 font-medium">
+          Showing <span className="font-semibold text-slate-900">{filteredReports.length}</span> of {reports.length} reports
         </div>
       </div>
-      
-      {/* Responsive List Container */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+
+      {/* Filter Toolbar */}
+      <div className="enterprise-card p-3 flex flex-wrap items-center justify-between gap-3">
+        {/* Left Search */}
+        <div className="relative flex-1 min-w-[240px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+          <input
+            type="text"
+            value={search}
+            onChange={e => {
+              setSearch(e.target.value);
+              if (e.target.value) {
+                setSearchParams({ q: e.target.value });
+              } else {
+                setSearchParams({});
+              }
+            }}
+            placeholder="Filter by report ID, street, or description..."
+            className="w-full pl-8 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs placeholder-slate-400 focus:outline-none focus:bg-white focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
+          />
+          {search && (
+            <button
+              onClick={() => {
+                setSearch('');
+                setSearchParams({});
+              }}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+
+        {/* Right Selectors */}
+        <div className="flex items-center gap-2">
+          {/* Status Dropdown */}
+          <div className="flex items-center space-x-1.5">
+            <span className="text-xs text-slate-500 font-medium hidden sm:inline">Status:</span>
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="bg-white border border-slate-200 rounded-lg text-xs font-medium px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-primary"
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="NEW">New</option>
+              <option value="IN_PROGRESS">In Progress</option>
+              <option value="RESOLVED">Resolved</option>
+              <option value="REJECTED">Rejected</option>
+            </select>
+          </div>
+
+          {/* Severity Dropdown */}
+          <div className="flex items-center space-x-1.5">
+            <span className="text-xs text-slate-500 font-medium hidden sm:inline">Severity:</span>
+            <select
+              value={severityFilter}
+              onChange={e => setSeverityFilter(e.target.value)}
+              className="bg-white border border-slate-200 rounded-lg text-xs font-medium px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-primary"
+            >
+              <option value="ALL">All Severities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="normal">Normal</option>
+            </select>
+          </div>
+
+          {(statusFilter !== 'ALL' || severityFilter !== 'ALL' || search) && (
+            <button
+              onClick={() => {
+                setStatusFilter('ALL');
+                setSeverityFilter('ALL');
+                setSearch('');
+                setSearchParams({});
+              }}
+              className="text-xs text-slate-500 hover:text-slate-900 underline px-1"
+            >
+              Reset
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Reports Data Table */}
+      <div className="enterprise-card overflow-hidden">
         {loading ? (
-          <div className="p-12 flex flex-col items-center justify-center space-y-4">
-            <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin"></div>
-            <p className="text-slate-500 font-medium">Loading reports database...</p>
+          <div className="p-12 flex flex-col items-center justify-center text-slate-400 space-y-3">
+            <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+            <p className="text-xs font-medium text-slate-500">Loading reports from database…</p>
           </div>
         ) : filteredReports.length === 0 ? (
-          <div className="p-16 flex flex-col items-center justify-center text-center">
-            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-              <CheckCircle size={32} className="text-slate-300" />
+          <div className="p-12 text-center text-slate-500">
+            <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400">
+              <CheckCircle2 size={20} />
             </div>
-            <h3 className="text-lg font-bold text-slate-700">All caught up!</h3>
-            <p className="text-slate-500 mt-1 max-w-sm">
-              {search ? 'No reports matched your search keyword.' : 'No active reports found for your department at this time.'}
+            <p className="text-sm font-semibold text-slate-800">No matching reports found</p>
+            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+              {search || statusFilter !== 'ALL' || severityFilter !== 'ALL'
+                ? 'Try adjusting your search criteria or resetting filters.'
+                : 'There are currently no active reports filed for this department.'}
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-slate-100">
-            {/* Desktop Table Header */}
-            <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-4 bg-slate-50/80 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">
-              <div className="col-span-5">Report Details</div>
-              <div className="col-span-2">Status</div>
-              <div className="col-span-2">Severity</div>
-              <div className="col-span-2">Reported On</div>
-              <div className="col-span-1 text-right">Action</div>
-            </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/75 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                  <th className="py-3 px-4 w-28">Report ID</th>
+                  <th className="py-3 px-4">Category & Issue</th>
+                  <th className="py-3 px-4 w-32">Status</th>
+                  <th className="py-3 px-4 w-28">Severity</th>
+                  <th className="py-3 px-4 w-32">Reported Date</th>
+                  <th className="py-3 px-4 w-20 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-xs">
+                {filteredReports.map(report => (
+                  <tr
+                    key={report.id}
+                    className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                    onClick={() => window.location.href = `/dept/${deptCode}/reports/${report.id}`}
+                  >
+                    {/* ID */}
+                    <td className="py-3.5 px-4 font-mono text-slate-500 font-medium">
+                      #{report.id.slice(0, 8)}
+                    </td>
 
-            {/* List Body (Stacks on mobile) */}
-            {filteredReports.map(report => (
-              <Link 
-                to={`/dept/${deptCode}/reports/${report.id}`} 
-                key={report.id} 
-                className="block md:grid md:grid-cols-12 md:gap-4 md:items-center px-4 py-5 md:px-6 hover:bg-slate-50/80 transition-colors group"
-              >
-                {/* Mobile View / Desktop Col 1 */}
-                <div className="col-span-5 flex items-start space-x-4 mb-3 md:mb-0">
-                  <div className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-white shadow-inner shadow-black/10" style={{ backgroundColor: report.categories?.color || '#cbd5e1' }}>
-                    <span className="font-bold text-sm">{report.categories?.name?.charAt(0) || '?'}</span>
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-slate-900 truncate group-hover:text-primary transition-colors">
-                      {report.categories?.name}
-                    </p>
-                    <p className="text-sm text-slate-500 line-clamp-1 mt-0.5">
-                      {report.description}
-                    </p>
-                  </div>
-                </div>
+                    {/* Category & Description */}
+                    <td className="py-3.5 px-4">
+                      <div className="flex items-start space-x-2.5">
+                        <span
+                          className="w-2 h-2 rounded-full mt-1.5 shrink-0"
+                          style={{ backgroundColor: report.categories?.color || '#94a3b8' }}
+                        />
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-900 group-hover:text-primary transition-colors">
+                            {report.categories?.name || 'Uncategorized'}
+                          </p>
+                          <p className="text-slate-600 line-clamp-1 mt-0.5">
+                            {report.description}
+                          </p>
+                          {report.address && (
+                            <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-1 truncate">
+                              <MapPin size={11} className="shrink-0" />
+                              <span>{report.address}</span>
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
 
-                {/* Status Badge */}
-                <div className="col-span-2 flex items-center mb-2 md:mb-0">
-                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${getStatusColor(report.status)}`}>
-                    {getStatusIcon(report.status)}
-                    {report.status}
-                  </span>
-                </div>
+                    {/* Status */}
+                    <td className="py-3.5 px-4">
+                      {getStatusBadge(report.status)}
+                    </td>
 
-                {/* Severity */}
-                <div className="col-span-2 flex items-center mb-2 md:mb-0">
-                  <span className={`text-sm font-semibold capitalize
-                    ${report.severity === 'critical' ? 'text-red-600' : 
-                      report.severity === 'high' ? 'text-orange-500' : 
-                      'text-slate-600'}`}>
-                    {report.severity}
-                  </span>
-                </div>
+                    {/* Severity */}
+                    <td className="py-3.5 px-4">
+                      {getSeverityBadge(report.severity)}
+                    </td>
 
-                {/* Date */}
-                <div className="col-span-2 flex items-center mb-2 md:mb-0 text-sm font-medium text-slate-500">
-                  {new Date(report.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                </div>
+                    {/* Date */}
+                    <td className="py-3.5 px-4 text-slate-500">
+                      {new Date(report.created_at).toLocaleDateString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                      })}
+                    </td>
 
-                {/* Action arrow */}
-                <div className="col-span-1 hidden md:flex justify-end text-slate-300 group-hover:text-primary transition-colors">
-                  <ChevronRight size={20} />
-                </div>
-              </Link>
-            ))}
+                    {/* Action Arrow */}
+                    <td className="py-3.5 px-4 text-right">
+                      <Link
+                        to={`/dept/${deptCode}/reports/${report.id}`}
+                        onClick={e => e.stopPropagation()}
+                        className="inline-flex items-center text-slate-400 group-hover:text-primary p-1 rounded"
+                      >
+                        <ChevronRight size={16} />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

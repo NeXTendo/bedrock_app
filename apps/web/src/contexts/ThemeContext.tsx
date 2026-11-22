@@ -13,12 +13,12 @@ const ThemeContext = createContext<ThemeContextType>({
 });
 
 const themeConfig: Record<DepartmentCode, { primary: string; light: string; dark: string; name: string }> = {
-  DEFAULT: { primary: '#3b82f6', light: '#93c5fd', dark: '#1d4ed8', name: 'Bedrock' },
-  ROADS: { primary: '#f97316', light: '#fdba74', dark: '#c2410c', name: 'Roads & Infrastructure' }, // Orange
-  WATER: { primary: '#0ea5e9', light: '#7dd3fc', dark: '#0369a1', name: 'Water & Sanitation' }, // Sky Blue
-  WASTE: { primary: '#22c55e', light: '#86efac', dark: '#15803d', name: 'Waste Management' }, // Green
-  ZONING: { primary: '#a855f7', light: '#d8b4fe', dark: '#7e22ce', name: 'City Planning' }, // Purple
-  HEALTH: { primary: '#ec4899', light: '#f9a8d4', dark: '#be185d', name: 'Public Health' }, // Pink
+  DEFAULT: { primary: '#0b4b3b', light: '#e6f2e9', dark: '#07382d', name: 'Bedrock' },
+  ROADS:   { primary: '#ea580c', light: '#ffedd5', dark: '#9a3412', name: 'Roads & Infrastructure' },
+  WATER:   { primary: '#0284c7', light: '#e0f2fe', dark: '#0369a1', name: 'Water & Sanitation' },
+  WASTE:   { primary: '#16a34a', light: '#dcfce7', dark: '#15803d', name: 'Waste Management' },
+  ZONING:  { primary: '#7c3aed', light: '#ede9fe', dark: '#5b21b6', name: 'City Planning & Zoning' },
+  HEALTH:  { primary: '#e11d48', light: '#ffe4e6', dark: '#9f1239', name: 'Public Health' },
 };
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {

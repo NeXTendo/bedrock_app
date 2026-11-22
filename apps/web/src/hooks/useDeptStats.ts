@@ -284,24 +284,38 @@ export function useDeptStats(deptId: string): DeptStats {
       // 3. Fetch Staff and their active assignment counts
       const { data: staffList } = await supabase
         .from('profiles')
-        .select('id, full_name, role, avatar_url')
+        .select('id, full_name, role, avatar_url, is_suspended')
         .eq('department_id', deptId)
         .in('role', ['staff', 'admin']);
 
       const { data: activeAssignments } = await supabase
         .from('assignments')
-        .select('assigned_to, report_id');
+        .select('id, assigned_to, report_id, assignment_members(profile_id)')
+        .eq('department_id', deptId);
 
-      const staffWorkload: StaffWorkload[] = (staffList || []).map(s => {
-        const assignedCount = (activeAssignments || []).filter(a => a.assigned_to === s.id).length;
-        return {
-          id: s.id,
-          name: s.full_name || 'Staff Member',
-          role: s.role,
-          avatar_url: s.avatar_url,
-          activeCount: assignedCount,
-        };
+      const reportStatusById = new Map(allReports.map(report => [report.id, report.status]));
+      const openAssignments = (activeAssignments || []).filter(assignment => {
+        const status = reportStatusById.get(assignment.report_id);
+        return status && !['RESOLVED', 'REJECTED'].includes(status);
       });
+
+      const staffWorkload: StaffWorkload[] = (staffList || [])
+        .filter(staff => !staff.is_suspended)
+        .map(s => {
+          const assignedReports = new Set(
+            openAssignments
+              .filter(assignment => assignment.assigned_to === s.id
+                || (assignment.assignment_members || []).some(member => member.profile_id === s.id))
+              .map(assignment => assignment.id)
+          );
+          return {
+            id: s.id,
+            name: s.full_name || 'Staff Member',
+            role: s.role,
+            avatar_url: s.avatar_url,
+            activeCount: assignedReports.size,
+          };
+        });
 
       // 4. Fetch recent activity / audit events
       const recentReportsIds = allReports.slice(0, 15).map(r => r.id);

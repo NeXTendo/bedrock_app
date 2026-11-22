@@ -1,6 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Image, Share, useColorScheme } from 'react-native';
-import { theme } from '@/constants/theme';
+import { StyleSheet, View, Text, TouchableOpacity, Image, Share, useColorScheme, Platform } from 'react-native';
+import { getCategoryColor, theme } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -43,6 +43,7 @@ export function ReportCard({ report, userLocation, variant = 'standard' }: Repor
     : storeTheme;
 
   const colors = theme[currentTheme as 'light' | 'dark'];
+  const categoryColor = getCategoryColor(report.categories?.icon, colors);
 
   const calculateDistance = () => {
     if (!userLocation || !report.latitude || !report.longitude) return null;
@@ -78,7 +79,7 @@ export function ReportCard({ report, userLocation, variant = 'standard' }: Repor
       case 'assigned':
       case 'in_progress': return colors.warning;
       case 'resolved':    return colors.success;
-      default:            return colors.surface2;
+      default:            return colors.textDim;
     }
   };
 
@@ -92,6 +93,7 @@ export function ReportCard({ report, userLocation, variant = 'standard' }: Repor
   };
 
   const statusColor = getStatusColor(report.status);
+  const statusBackground = `${statusColor}1A`;
   const photoUrl = report.report_photos?.[0]
     ? `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/report-photos/${report.report_photos[0].image_url}`
     : null;
@@ -112,8 +114,8 @@ export function ReportCard({ report, userLocation, variant = 'standard' }: Repor
               <IconSymbol name="camera.fill" color={colors.textDim} size={20} />
             </View>
           )}
-          <View style={[styles.statusPill, { backgroundColor: statusColor }]}>
-            <Text style={styles.statusPillText}>{getStatusLabel(report.status)}</Text>
+          <View style={[styles.statusPill, { backgroundColor: statusBackground }]}>
+            <Text style={[styles.statusPillText, { color: statusColor }]}>{getStatusLabel(report.status)}</Text>
           </View>
         </View>
 
@@ -121,11 +123,11 @@ export function ReportCard({ report, userLocation, variant = 'standard' }: Repor
           <View style={styles.categoryRow}>
             <IconSymbol 
               name={(report.categories?.icon || 'paperplane') as any} 
-              color={report.categories?.color || colors.accent} 
+              color={categoryColor}
               size={10} 
             />
             <Text 
-              style={[styles.categoryLabel, { color: report.categories?.color || colors.accent }]} 
+              style={[styles.categoryLabel, { color: colors.text }]}
               numberOfLines={1}
             >
               {report.categories?.name || 'Report'}
@@ -165,8 +167,8 @@ export function ReportCard({ report, userLocation, variant = 'standard' }: Repor
             <IconSymbol name="camera.fill" color={colors.textDim} size={28} />
           </View>
         )}
-        <View style={[styles.statusPill, { backgroundColor: statusColor }]}>
-          <Text style={styles.statusPillText}>{getStatusLabel(report.status)}</Text>
+        <View style={[styles.statusPill, { backgroundColor: statusBackground }]}>
+          <Text style={[styles.statusPillText, { color: statusColor }]}>{getStatusLabel(report.status)}</Text>
         </View>
       </View>
 
@@ -174,10 +176,10 @@ export function ReportCard({ report, userLocation, variant = 'standard' }: Repor
         <View style={styles.categoryRow}>
           <IconSymbol 
             name={(report.categories?.icon || 'paperplane') as any} 
-            color={report.categories?.color || colors.accent} 
+            color={categoryColor}
             size={12} 
           />
-          <Text style={[styles.categoryLabel, { color: report.categories?.color || colors.accent }]}>
+          <Text style={[styles.categoryLabel, { color: colors.text }]}>
             {report.categories?.name || 'Uncategorized'}
           </Text>
           {distance && (
@@ -220,12 +222,21 @@ export function ReportCard({ report, userLocation, variant = 'standard' }: Repor
 const styles = StyleSheet.create({
   /* Standard card */
   card: {
-    borderRadius: 14,
-    marginBottom: 12,
+    borderRadius: 20,
+    marginBottom: 16,
     overflow: 'hidden',
     borderWidth: 1,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#292E28',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+      },
+      android: { elevation: 1 },
+    }),
   },
-  imageWrap: { height: 150, width: '100%' },
+  imageWrap: { height: 180, width: '100%' },
   image: { width: '100%', height: '100%' },
   imagePlaceholder: {
     width: '100%', height: '100%',
@@ -235,14 +246,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 10, right: 10,
     paddingHorizontal: 8, paddingVertical: 3,
-    borderRadius: 6,
+    borderRadius: 10,
   },
   statusPillText: {
-    color: '#fff',
     fontSize: 10,
     fontWeight: '600',
   },
-  body: { padding: 14 },
+  body: { padding: 16 },
   categoryRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -250,16 +260,16 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   categoryLabel: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '600',
     flexShrink: 1,
   },
   dot: { width: 3, height: 3, borderRadius: 1.5, opacity: 0.5, marginHorizontal: 2 },
   distanceLabel: { fontSize: 11 },
   description: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '500',
-    lineHeight: 20,
+    lineHeight: 22,
     marginBottom: 10,
   },
   footer: {
@@ -267,7 +277,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingTop: 10,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   footerLeft: {
     flexDirection: 'row',
@@ -276,16 +286,16 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 10,
   },
-  address: { fontSize: 11 },
+  address: { fontSize: 12 },
   footerRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  date: { fontSize: 11 },
+  date: { fontSize: 12 },
   shareBtn: {
-    width: 28, height: 28,
-    borderRadius: 8, borderWidth: 1,
+    width: 32, height: 32,
+    borderRadius: 10, borderWidth: 1,
     justifyContent: 'center', alignItems: 'center',
   },
 
@@ -293,8 +303,8 @@ const styles = StyleSheet.create({
   gridCard: {
     flex: 1,
     margin: 4,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 18,
+    borderWidth: 0,
     overflow: 'hidden',
   },
   gridImageWrap: { height: 100, width: '100%' },

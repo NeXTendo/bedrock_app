@@ -10,6 +10,31 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+const STATUS_LABELS: Record<string, string> = {
+  NEW: 'New',
+  REPORTED: 'Reported',
+  VERIFIED: 'Verified',
+  ASSIGNED: 'Assigned',
+  IN_PROGRESS: 'In progress',
+  RESOLVED: 'Resolved',
+  REJECTED: 'Rejected',
+};
+
+function formatNotificationBody(body: string): string {
+  const statusChange = body.match(/^Your report status changed to:\s*(.+)$/i);
+  if (!statusChange) return body;
+
+  const status = statusChange[1].trim().replace(/[.!?]+$/, '');
+  const normalizedStatus = status.replace(/[\s-]+/g, '_').toUpperCase();
+  const label = STATUS_LABELS[normalizedStatus] || normalizedStatus
+    .split('_')
+    .filter(Boolean)
+    .map(word => `${word.charAt(0).toUpperCase()}${word.slice(1).toLowerCase()}`)
+    .join(' ');
+
+  return `Your report is now ${label}.`;
+}
+
 function timeAgo(dateStr: string): string {
   const now = Date.now();
   const then = new Date(dateStr).getTime();
@@ -115,8 +140,7 @@ export default function NotificationsScreen() {
       <TouchableOpacity 
         style={[
           styles.notificationItem, 
-          { backgroundColor: colors.surface, borderColor: isRead ? colors.border : colors.accent + '60' },
-          !isRead && { backgroundColor: colors.surface2 }
+          { backgroundColor: isRead ? colors.surface : colors.accentSoft, borderColor: colors.border },
         ]}
         onPress={() => {
           if (!isRead) markAsRead.mutate(item.id);
@@ -126,7 +150,7 @@ export default function NotificationsScreen() {
         }}
         activeOpacity={0.7}
       >
-        <View style={[styles.iconContainer, { backgroundColor: isRead ? colors.surface2 : colors.accent + '20', borderColor: colors.border }]}>
+        <View style={[styles.iconContainer, { backgroundColor: isRead ? colors.surface2 : colors.surface }]}>
           <IconSymbol 
             name={item.type === 'report_update' ? 'bell.badge.fill' : 'megaphone.fill'} 
             color={isRead ? colors.textDim : colors.accent} 
@@ -135,7 +159,9 @@ export default function NotificationsScreen() {
         </View>
         <View style={styles.textContainer}>
           <Text style={[styles.title, { color: colors.text }, !isRead && styles.unreadText]}>{item.title}</Text>
-          <Text style={[styles.body, { color: colors.textDim }]} numberOfLines={2}>{item.body}</Text>
+          <Text style={[styles.body, { color: colors.textDim }]} numberOfLines={2}>
+            {formatNotificationBody(typeof item.body === 'string' ? item.body : '')}
+          </Text>
           <Text style={[styles.time, { color: colors.textDim }]}>{timeAgo(item.sent_at)}</Text>
         </View>
         {!isRead && <View style={[styles.unreadDot, { backgroundColor: colors.accent }]} />}
@@ -147,7 +173,7 @@ export default function NotificationsScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <AppHeader 
         title="Notifications"
-        subtitle={unreadCount > 0 ? `${unreadCount} UNREAD ALERTS` : 'ALL CAUGHT UP'}
+        subtitle={unreadCount > 0 ? `${unreadCount} unread` : 'You’re all caught up'}
         leftElement={
           <TouchableOpacity onPress={() => router.back()} style={[styles.backButton, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
             <IconSymbol name="chevron.left" color={colors.text} size={18} />
@@ -203,7 +229,7 @@ const styles = StyleSheet.create({
   backButton: {
     width: 36,
     height: 36,
-    borderRadius: 4,
+    borderRadius: 12,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -214,16 +240,16 @@ const styles = StyleSheet.create({
   notificationItem: {
     flexDirection: 'row',
     padding: 14,
-    borderRadius: 4,
+    borderRadius: 16,
     marginBottom: 8,
     alignItems: 'center',
-    borderWidth: 1,
+    borderWidth: 0,
   },
   iconContainer: {
     width: 38,
     height: 38,
-    borderRadius: 4,
-    borderWidth: 1,
+    borderRadius: 13,
+    borderWidth: 0,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -237,7 +263,7 @@ const styles = StyleSheet.create({
     marginBottom: 3,
   },
   unreadText: {
-    fontWeight: '800',
+    fontWeight: '700',
   },
   body: {
     fontSize: 13,
@@ -268,12 +294,11 @@ const styles = StyleSheet.create({
   markAllButton: {
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 4,
+    borderRadius: 12,
     borderWidth: 1,
   },
   markAllText: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.4,
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

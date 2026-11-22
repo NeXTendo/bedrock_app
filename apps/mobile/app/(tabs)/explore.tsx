@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   StyleSheet, 
   View, 
@@ -21,7 +21,6 @@ import { PaginationControl } from '@/components/PaginationControl';
 import * as Haptics from 'expo-haptics';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useLocation } from '@/hooks/useLocation';
-import { ExploreHighlights } from '@/components/ExploreHighlights';
 
 const PAGE_SIZE = 6;
 
@@ -31,7 +30,7 @@ export default function ExploreScreen() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'newest' | 'trending' | 'nearby'>('newest');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'resolved'>('all');
+  const [statusFilter, setStatusFilter] = useState<'active' | 'resolved'>('active');
   const [currentPage, setCurrentPage] = useState(1);
 
   const { theme: storeTheme, hapticsEnabled } = useSettingsStore();
@@ -43,9 +42,29 @@ export default function ExploreScreen() {
   
   const colors = theme[currentTheme as 'light' | 'dark'];
 
-  useEffect(() => {
+  const updateCategory = (categoryId: string | null) => {
+    if (selectedCategoryId === categoryId) return;
+    setSelectedCategoryId(categoryId);
     setCurrentPage(1);
-  }, [selectedCategoryId, searchQuery, sortBy, statusFilter]);
+  };
+
+  const updateSearch = (query: string) => {
+    if (searchQuery === query) return;
+    setSearchQuery(query);
+    setCurrentPage(1);
+  };
+
+  const updateSort = (sort: typeof sortBy) => {
+    if (sortBy === sort) return;
+    setSortBy(sort);
+    setCurrentPage(1);
+  };
+
+  const updateStatusFilter = (status: typeof statusFilter) => {
+    if (statusFilter === status) return;
+    setStatusFilter(status);
+    setCurrentPage(1);
+  };
 
   const { data: categories } = useQuery({
     queryKey: ['categories'],
@@ -57,54 +76,6 @@ export default function ExploreScreen() {
       if (error) throw error;
       return data;
     },
-  });
-
-  const { data: stats } = useQuery({
-    queryKey: ['community-stats'],
-    queryFn: async () => {
-      const { count: totalReports } = await supabase.from('reports').select('*', { count: 'exact', head: true });
-      const { count: resolvedCount } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'resolved');
-      const { count: activeUsers } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
-      
-      return {
-        total_reports: totalReports || 0,
-        resolved_today: resolvedCount || 0,
-        active_users: activeUsers || 0,
-      };
-    }
-  });
-
-  const { data: criticalReports } = useQuery({
-    queryKey: ['critical-reports'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('reports')
-        .select(`
-          id,
-          description,
-          address,
-          status,
-          categories (name, icon, color),
-          report_photos (image_url)
-        `)
-        .order('confirmation_count', { ascending: false })
-        .limit(4);
-      if (error) throw error;
-      return data as any[];
-    }
-  });
-
-  const { data: contributors } = useQuery({
-    queryKey: ['explore-top-citizens'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, xp_points')
-        .order('xp_points', { ascending: false })
-        .limit(3);
-      if (error) throw error;
-      return data;
-    }
   });
 
   const { data: reports, isLoading: reportsLoading, isRefetching, refetch } = useQuery({
@@ -123,9 +94,11 @@ export default function ExploreScreen() {
       }
 
       if (statusFilter === 'resolved') {
-        query = query.eq('status', 'resolved');
+        query = query.ilike('status', 'resolved');
       } else {
-        query = query.neq('status', 'resolved');
+        query = query
+          .not('status', 'ilike', 'resolved')
+          .not('status', 'ilike', 'rejected');
       }
 
       if (searchQuery) {
@@ -177,65 +150,32 @@ export default function ExploreScreen() {
   ];
 
   const renderHeader = () => {
-    const total = stats?.total_reports || 0;
-    const resolved = stats?.resolved_today || 0;
-    const rate = total > 0 ? Math.round((resolved / total) * 100) : 0;
-
     return (
       <View style={styles.header}>
-        {/* Page title */}
-        <Text style={[styles.pageTitle, { color: colors.text }]}>Explore</Text>
-
-        {/* Critical reports highlights */}
-        <ExploreHighlights reports={criticalReports || []} />
-
-        {/* City stats */}
-        <View style={[styles.statsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.statsHeader}>
-            <View style={[styles.statsDot, { backgroundColor: colors.success }]} />
-            <Text style={[styles.statsTitle, { color: colors.textDim }]}>City overview</Text>
-          </View>
-          <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: colors.text }]}>{stats?.total_reports ?? '—'}</Text>
-              <Text style={[styles.statLabel, { color: colors.textDim }]}>Total filed</Text>
-            </View>
-            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: colors.success }]}>{stats?.resolved_today ?? '—'}</Text>
-              <Text style={[styles.statLabel, { color: colors.textDim }]}>Resolved</Text>
-            </View>
-            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: colors.accent }]}>{rate}%</Text>
-              <Text style={[styles.statLabel, { color: colors.textDim }]}>Efficiency</Text>
-            </View>
-            <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: colors.text }]}>{stats?.active_users ?? '—'}</Text>
-              <Text style={[styles.statLabel, { color: colors.textDim }]}>Citizens</Text>
-            </View>
-          </View>
+        <View style={styles.titleBlock}>
+          <Text style={[styles.pageTitle, { color: colors.text }]}>Explore</Text>
+          <Text style={[styles.pageSubtitle, { color: colors.textDim }]}>
+            Find and follow reports in your community.
+          </Text>
         </View>
 
-        {/* Search bar */}
         <View style={[styles.searchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <IconSymbol name="magnifyingglass" color={colors.textDim} size={15} />
           <TextInput
-            placeholder="Search by description or street..."
+            placeholder="Search reports"
             placeholderTextColor={colors.textDim}
             style={[styles.searchInput, { color: colors.text }]}
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={updateSearch}
           />
           {searchQuery !== '' && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <TouchableOpacity onPress={() => updateSearch('')}>
               <IconSymbol name="xmark.circle.fill" color={colors.textDim} size={15} />
             </TouchableOpacity>
           )}
         </View>
 
-        {/* Category pills */}
+        <Text style={[styles.filterGroupLabel, { color: colors.textDim }]}>Categories</Text>
         <ScrollView 
           horizontal 
           showsHorizontalScrollIndicator={false}
@@ -245,7 +185,7 @@ export default function ExploreScreen() {
             label="All"
             icon="square.grid.2x2.fill"
             isActive={selectedCategoryId === null}
-            onPress={() => setSelectedCategoryId(null)}
+            onPress={() => updateCategory(null)}
           />
           {categories?.map((cat) => (
             <CategoryPill
@@ -253,39 +193,42 @@ export default function ExploreScreen() {
               label={cat.name}
               icon={cat.icon}
               isActive={selectedCategoryId === cat.id}
-              onPress={() => setSelectedCategoryId(cat.id)}
-              color={cat.color}
+              onPress={() => updateCategory(cat.id)}
             />
           ))}
         </ScrollView>
 
-        {/* Status + Sort row */}
         <View style={styles.filterRow}>
-          {/* Status toggle */}
-          <View style={[styles.statusToggle, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.statusToggle, { backgroundColor: colors.surface2, borderColor: colors.border }]}>
             <TouchableOpacity
-              style={[styles.toggleBtn, statusFilter === 'all' && [styles.toggleBtnActive, { backgroundColor: colors.accentSoft }]]}
-              onPress={() => setStatusFilter('all')}
+              style={[styles.toggleBtn, statusFilter === 'active' && [styles.toggleBtnActive, { backgroundColor: colors.accentSoft }]]}
+              onPress={() => updateStatusFilter('active')}
+              accessibilityRole="button"
+              accessibilityState={{ selected: statusFilter === 'active' }}
             >
-              <Text style={[styles.toggleText, { color: statusFilter === 'all' ? colors.accent : colors.textDim }]}>Active</Text>
+              <Text style={[styles.toggleText, { color: statusFilter === 'active' ? colors.accent : colors.textDim }]}>Active</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.toggleBtn, statusFilter === 'resolved' && [styles.toggleBtnActive, { backgroundColor: colors.accentSoft }]]}
-              onPress={() => setStatusFilter('resolved')}
+              onPress={() => updateStatusFilter('resolved')}
+              accessibilityRole="button"
+              accessibilityState={{ selected: statusFilter === 'resolved' }}
             >
               <Text style={[styles.toggleText, { color: statusFilter === 'resolved' ? colors.accent : colors.textDim }]}>Resolved</Text>
             </TouchableOpacity>
           </View>
 
-          {/* Sort cycle button */}
           <TouchableOpacity 
             style={[styles.sortBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
             onPress={() => {
               if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              if (sortBy === 'newest') setSortBy('trending');
-              else if (sortBy === 'trending') setSortBy('nearby');
-              else setSortBy('newest');
+              if (sortBy === 'newest') updateSort('trending');
+              else if (sortBy === 'trending') updateSort('nearby');
+              else updateSort('newest');
             }}
+            accessibilityRole="button"
+            accessibilityLabel={`Sort reports by ${SORT_OPTIONS.find(s => s.key === sortBy)?.label}`}
+            accessibilityHint="Tap to change the report sorting"
           >
             <IconSymbol 
               name={SORT_OPTIONS.find(s => s.key === sortBy)?.icon as any || 'clock'} 
@@ -298,9 +241,21 @@ export default function ExploreScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={[styles.sectionLabel, { color: colors.textDim }]}>
-          {totalReportsCount} {totalReportsCount === 1 ? 'report' : 'reports'}
-        </Text>
+        <View style={styles.resultsHeader}>
+          <View>
+            <Text style={[styles.resultsTitle, { color: colors.text }]}>
+              {statusFilter === 'active' ? 'Active reports' : 'Resolved reports'}
+            </Text>
+            <Text style={[styles.resultsSubtitle, { color: colors.textDim }]}>
+              {totalReportsCount} {totalReportsCount === 1 ? 'report' : 'reports'} found
+            </Text>
+          </View>
+          <View style={[styles.sortBadge, { backgroundColor: colors.accentSoft }]}>
+            <Text style={[styles.sortBadgeText, { color: colors.accent }]}>
+              {SORT_OPTIONS.find(s => s.key === sortBy)?.label}
+            </Text>
+          </View>
+        </View>
       </View>
     );
   };
@@ -310,45 +265,21 @@ export default function ExploreScreen() {
       <PaginationControl
         currentPage={currentPage}
         totalPages={totalPages}
-        totalItems={totalReportsCount}
-        pageSize={PAGE_SIZE}
         onPageChange={setCurrentPage}
       />
-
-      {contributors && contributors.length > 0 && (
-        <View style={styles.leaderboardSection}>
-          <Text style={[styles.leaderboardTitle, { color: colors.text }]}>Top observers</Text>
-          {contributors.map((user, i) => (
-            <View key={user.id} style={[styles.leaderboardItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={[
-                styles.rankBadge,
-                { backgroundColor: i === 0 ? colors.accent : colors.surface2 }
-              ]}>
-                <Text style={[styles.rankText, { color: i === 0 ? colors.background : colors.textDim }]}>{i + 1}</Text>
-              </View>
-              <View style={styles.userInfo}>
-                <Text style={[styles.userName, { color: colors.text }]}>{user.full_name || 'Citizen'}</Text>
-                <Text style={[styles.userXp, { color: colors.textDim }]}>{user.xp_points || 0} XP</Text>
-              </View>
-              <IconSymbol name="bolt.fill" color={colors.accent} size={13} />
-            </View>
-          ))}
-        </View>
-      )}
     </View>
   );
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <FlatList
-        key="explore-2-col-grid"
+        key="explore-report-list"
         data={paginatedReports}
-        numColumns={2}
+        numColumns={1}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
-          <ReportCard report={item} userLocation={userLocation} variant="grid" />
+          <ReportCard report={item} userLocation={userLocation} />
         )}
-        columnWrapperStyle={styles.columnWrapper}
         ListHeaderComponent={renderHeader}
         ListFooterComponent={renderFooter}
         refreshing={isRefetching}
@@ -360,10 +291,15 @@ export default function ExploreScreen() {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           reportsLoading ? (
-            <ActivityIndicator size="large" color={colors.accent} style={{ marginTop: 40 }} />
+            <View style={styles.loadingState}>
+              <ActivityIndicator size="large" color={colors.accent} />
+              <Text style={[styles.loadingText, { color: colors.textDim }]}>Loading reports…</Text>
+            </View>
           ) : (
-            <View style={styles.emptyState}>
-              <IconSymbol name="magnifyingglass" color={colors.surface2} size={44} />
+            <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.emptyIcon, { backgroundColor: colors.accentSoft }]}>
+                <IconSymbol name="magnifyingglass" color={colors.accent} size={24} />
+              </View>
               <Text style={[styles.emptyText, { color: colors.text }]}>No reports found</Text>
               <Text style={[styles.emptySubtext, { color: colors.textDim }]}>Try adjusting your filters or search.</Text>
             </View>
@@ -376,182 +312,140 @@ export default function ExploreScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  listContent: { paddingHorizontal: 12 },
-  columnWrapper: { justifyContent: 'space-between' },
+  listContent: { paddingHorizontal: 18 },
+  header: { marginBottom: 10 },
 
-  header: { marginBottom: 12 },
-
+  titleBlock: { marginBottom: 16 },
   pageTitle: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '700',
-    letterSpacing: -0.5,
-    marginBottom: 16,
-    paddingHorizontal: 2,
+    letterSpacing: -0.7,
   },
-
-  statsCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 14,
-  },
-  statsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 12,
-  },
-  statsDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statsTitle: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  statItem: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  statDivider: {
-    width: 1,
-    height: 22,
-  },
-  statValue: {
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-  },
-  statLabel: {
-    fontSize: 11,
-    fontWeight: '400',
-    marginTop: 2,
+  pageSubtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 3,
   },
 
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: 15,
     paddingHorizontal: 12,
-    height: 44,
+    height: 50,
     borderWidth: 1,
-    marginBottom: 12,
-    gap: 8,
+    marginBottom: 16,
+    gap: 10,
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
   },
 
+  filterGroupLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
   categoriesList: {
-    paddingBottom: 4,
+    paddingBottom: 6,
     paddingHorizontal: 2,
-    gap: 6,
-    marginBottom: 10,
+    gap: 8,
+    marginBottom: 14,
   },
 
   filterRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 10,
+    marginBottom: 16,
   },
   statusToggle: {
     flexDirection: 'row',
     flex: 1,
-    borderRadius: 10,
+    borderRadius: 13,
     borderWidth: 1,
-    padding: 3,
-    gap: 3,
+    padding: 4,
+    gap: 4,
   },
   toggleBtn: {
     flex: 1,
-    paddingVertical: 7,
+    paddingVertical: 9,
     alignItems: 'center',
-    borderRadius: 7,
+    borderRadius: 9,
   },
   toggleBtnActive: {},
   toggleText: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   sortBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 10,
+    gap: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+    borderRadius: 13,
     borderWidth: 1,
   },
   sortText: {
     fontSize: 13,
     fontWeight: '600',
   },
-
-  sectionLabel: {
+  resultsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    paddingHorizontal: 2,
+  },
+  resultsTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  resultsSubtitle: {
     fontSize: 12,
-    fontWeight: '500',
-    marginBottom: 6,
-    marginLeft: 2,
+    marginTop: 2,
+  },
+  sortBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  sortBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
 
   footerContainer: { marginTop: 8 },
 
-  leaderboardSection: {
-    marginTop: 24,
-    marginBottom: 16,
-  },
-  leaderboardTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 10,
-  },
-  leaderboardItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-  },
-  rankBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  rankText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  userInfo: { flex: 1 },
-  userName: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  userXp: {
-    fontSize: 12,
-    marginTop: 1,
-  },
-
   emptyState: {
     alignItems: 'center',
-    marginTop: 48,
-    paddingHorizontal: 24,
+    marginTop: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 28,
+    borderWidth: 1,
+    borderRadius: 18,
+  },
+  loadingState: {
+    alignItems: 'center',
+    paddingVertical: 44,
+  },
+  loadingText: {
+    fontSize: 13,
+    marginTop: 10,
+  },
+  emptyIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyText: {
     fontSize: 16,
     fontWeight: '600',
-    marginTop: 14,
+    marginTop: 12,
   },
   emptySubtext: {
     fontSize: 13,

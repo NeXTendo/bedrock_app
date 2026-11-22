@@ -1,6 +1,6 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useState, useRef } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View, Image, ActivityIndicator } from 'react-native';
+import { Alert, StyleSheet, Text, TouchableOpacity, View, Image, ActivityIndicator, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useReportStore } from '@/stores/reportStore';
 import { theme } from '@/constants/theme';
@@ -11,16 +11,19 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 
+const MAX_PHOTOS = 5;
+
 export default function CameraScreen() {
+  const { draft, setDraft } = useReportStore();
   const [permission, requestPermission] = useCameraPermissions();
   const [photo, setPhoto] = useState<string | null>(null);
+  const [selectedPhotos, setSelectedPhotos] = useState<string[]>(() => draft.photos.slice(0, MAX_PHOTOS));
   const [facing, setFacing] = useState<'back' | 'front'>('back');
   const [flash, setFlash] = useState<'off' | 'on' | 'auto'>('off');
   const [isProcessing, setIsProcessing] = useState(false);
   const cameraRef = useRef<CameraView>(null);
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { setDraft } = useReportStore();
 
   if (!permission) {
     // Camera permissions are still loading.
@@ -42,6 +45,7 @@ export default function CameraScreen() {
   }
 
   const takePicture = async () => {
+    if (selectedPhotos.length >= MAX_PHOTOS) return;
     if (cameraRef.current) {
       const result = await cameraRef.current.takePictureAsync();
       if (result) {
@@ -63,14 +67,25 @@ export default function CameraScreen() {
   };
 
   const pickImage = async () => {
+    const remaining = MAX_PHOTOS - selectedPhotos.length;
+    if (remaining <= 0) {
+      Alert.alert('Photo limit reached', `You can attach up to ${MAX_PHOTOS} photos to a report.`);
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      selectionLimit: remaining,
       allowsEditing: false,
       quality: 1,
     });
 
     if (!result.canceled) {
-      setPhoto(result.assets[0].uri);
+      setSelectedPhotos(current => Array.from(new Set([
+        ...current,
+        ...result.assets.map(asset => asset.uri),
+      ])).slice(0, MAX_PHOTOS));
     }
   };
 
@@ -91,11 +106,28 @@ export default function CameraScreen() {
     }
   };
 
-  const handleNext = () => {
-    if (photo) {
-      setDraft({ photos: [photo] });
-      router.push('/report/create/location');
+  const addPhoto = () => {
+    if (!photo) return;
+    if (selectedPhotos.length >= MAX_PHOTOS) {
+      Alert.alert('Photo limit reached', `You can attach up to ${MAX_PHOTOS} photos to a report.`);
+      setPhoto(null);
+      return;
     }
+    setSelectedPhotos(current => [...current, photo]);
+    setPhoto(null);
+  };
+
+  const removePhoto = (index: number) => {
+    setSelectedPhotos(current => current.filter((_, photoIndex) => photoIndex !== index));
+  };
+
+  const handleNext = () => {
+    if (selectedPhotos.length === 0) {
+      Alert.alert('Add a photo', 'Take or choose at least one photo for this report.');
+      return;
+    }
+    setDraft({ photos: selectedPhotos });
+    router.push('/report/create/location');
   };
 
   const handleBack = () => {
@@ -126,12 +158,47 @@ export default function CameraScreen() {
               </TouchableOpacity>
             </View>
             
+            {selectedPhotos.length > 0 ? (
+              <View style={[styles.selectionTray, { bottom: insets.bottom + 124 }]}>
+                <View style={styles.selectionHeader}>
+                  <Text style={styles.selectionCount}>{selectedPhotos.length}/{MAX_PHOTOS} photos</Text>
+                  <TouchableOpacity style={styles.continueButton} onPress={handleNext}>
+                    <Text style={styles.continueText}>Continue</Text>
+                  </TouchableOpacity>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.selectedPhotoList}>
+                  {selectedPhotos.map((uri, index) => (
+                    <View key={`${uri}-${index}`} style={styles.thumbnailContainer}>
+                      <Image source={{ uri }} style={styles.thumbnail} />
+                      <TouchableOpacity
+                        style={styles.removePhotoButton}
+                        onPress={() => removePhoto(index)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove photo ${index + 1}`}
+                      >
+                        <Ionicons name="close-circle" size={22} color="white" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            ) : (
+              <Text style={[styles.selectionHint, { bottom: insets.bottom + 112 }]}>
+                Take or choose up to {MAX_PHOTOS} photos
+              </Text>
+            )}
+
             <View style={[styles.bottomControls, { paddingBottom: insets.bottom + 40 }]}>
               <TouchableOpacity style={styles.sideButton} onPress={pickImage}>
                 <Ionicons name="images" size={30} color="white" />
               </TouchableOpacity>
               
-              <TouchableOpacity style={styles.captureButton} onPress={takePicture}>
+              <TouchableOpacity
+                style={[styles.captureButton, selectedPhotos.length >= MAX_PHOTOS && styles.disabledCaptureButton]}
+                onPress={takePicture}
+                disabled={selectedPhotos.length >= MAX_PHOTOS}
+                accessibilityLabel="Take a photo"
+              >
                 <View style={styles.captureButtonInner} />
               </TouchableOpacity>
 
@@ -161,8 +228,8 @@ export default function CameraScreen() {
             <TouchableOpacity style={styles.retakeButton} onPress={() => setPhoto(null)} disabled={isProcessing}>
               <Text style={styles.retakeText}>RETAKE</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.nextButton} onPress={handleNext} disabled={isProcessing}>
-              <Text style={styles.nextText}>USE PHOTO</Text>
+            <TouchableOpacity style={styles.nextButton} onPress={addPhoto} disabled={isProcessing}>
+              <Text style={styles.nextText}>ADD PHOTO</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -260,6 +327,68 @@ const styles = StyleSheet.create({
     height: 64,
     borderRadius: 32,
     backgroundColor: 'white',
+  },
+  disabledCaptureButton: {
+    opacity: 0.45,
+  },
+  selectionHint: {
+    position: 'absolute',
+    alignSelf: 'center',
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '600',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  selectionTray: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.58)',
+    borderRadius: 14,
+    padding: 10,
+  },
+  selectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  selectionCount: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  continueButton: {
+    backgroundColor: theme.colors.accent,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  continueText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  selectedPhotoList: {
+    gap: 8,
+  },
+  thumbnailContainer: {
+    position: 'relative',
+  },
+  thumbnail: {
+    width: 52,
+    height: 52,
+    borderRadius: 8,
+  },
+  removePhotoButton: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 11,
   },
   previewContainer: {
     flex: 1,

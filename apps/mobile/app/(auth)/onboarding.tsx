@@ -1,7 +1,7 @@
 import { StyleSheet, View, Text, TouchableOpacity, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
-import { theme } from '@/constants/theme';
-import LottieView from 'lottie-react-native';
+import { useAppColors } from '@/hooks/useAppColors';
+import AppLottieView from '@/components/ui/AppLottieView';
 import { useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -32,6 +32,7 @@ const slides = [
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const colors = useAppColors();
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
 
   const handleNext = () => {
@@ -43,24 +44,24 @@ export default function OnboardingScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <TouchableOpacity 
         style={[styles.skipButton, { top: insets.top + 20 }]}
         onPress={() => router.replace('/(auth)/login')}
       >
-        <Text style={styles.skipText}>SKIP</Text>
+        <Text style={[styles.skipText, { color: colors.textDim }]}>Skip</Text>
       </TouchableOpacity>
 
       <View style={styles.slide}>
-        <LottieView
+        <AppLottieView
           source={slides[currentSlideIndex].animation}
           autoPlay
           loop
           style={styles.animation}
         />
         <View style={styles.textContainer}>
-          <Text style={styles.title}>{slides[currentSlideIndex].title}</Text>
-          <Text style={styles.description}>{slides[currentSlideIndex].description}</Text>
+          <Text style={[styles.title, { color: colors.text }]}>{slides[currentSlideIndex].title}</Text>
+          <Text style={[styles.description, { color: colors.textDim }]}>{slides[currentSlideIndex].description}</Text>
         </View>
       </View>
 
@@ -71,14 +72,15 @@ export default function OnboardingScreen() {
               key={index}
               style={[
                 styles.indicator,
+                { backgroundColor: currentSlideIndex === index ? colors.accent : colors.surface2 },
                 currentSlideIndex === index && styles.activeIndicator,
               ]}
             />
           ))}
         </View>
-        <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
+        <TouchableOpacity style={[styles.nextButton, { backgroundColor: colors.accent }]} onPress={handleNext}>
           <Text style={styles.nextButtonText}>
-            {currentSlideIndex === slides.length - 1 ? 'GET STARTED' : 'NEXT'}
+            {currentSlideIndex === slides.length - 1 ? 'Get started' : 'Continue'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -89,7 +91,7 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: '#F4F2EA',
   },
   skipButton: {
     position: 'absolute',
@@ -97,10 +99,8 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   skipText: {
-    color: theme.colors.textDim,
     fontSize: 12,
-    fontWeight: 'bold',
-    letterSpacing: 1,
+    fontWeight: '600',
   },
   slide: {
     flex: 1,
@@ -117,18 +117,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: theme.colors.text,
+    fontSize: 30,
+    fontWeight: '700',
+    letterSpacing: -0.5,
     textAlign: 'center',
-    fontFamily: 'System', // Replace with Syne later
   },
   description: {
-    fontSize: 16,
-    color: theme.colors.textDim,
+    fontSize: 15,
     textAlign: 'center',
     marginTop: 16,
-    lineHeight: 24,
+    lineHeight: 23,
   },
   footer: {
     padding: 40,
@@ -141,25 +139,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   indicator: {
-    height: 4,
-    width: 12,
-    backgroundColor: theme.colors.surface2,
-    borderRadius: 2,
+    height: 6,
+    width: 6,
+    borderRadius: 3,
     marginRight: 4,
   },
   activeIndicator: {
-    width: 24,
-    backgroundColor: theme.colors.accent,
+    width: 20,
   },
   nextButton: {
-    backgroundColor: theme.colors.accent,
     paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
   },
   nextButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
+    color: '#FFFFFF',
+    fontWeight: '600',
     fontSize: 14,
   },
 });

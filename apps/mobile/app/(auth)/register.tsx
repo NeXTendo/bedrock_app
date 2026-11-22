@@ -1,11 +1,12 @@
 import { StyleSheet, View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
-import { theme } from '@/constants/theme';
+import { useAppColors } from '@/hooks/useAppColors';
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const colors = useAppColors();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -38,32 +39,33 @@ export default function RegisterScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { backgroundColor: colors.background }]}>
         <View style={styles.header}>
-          <Text style={styles.title}>Join Bedrock</Text>
-          <Text style={styles.subtitle}>Be part of the community building a better city.</Text>
+          <Text style={[styles.brand, { color: colors.accent }]}>BEDROCK</Text>
+          <Text style={[styles.title, { color: colors.text }]}>Create your account</Text>
+          <Text style={[styles.subtitle, { color: colors.textDim }]}>Join your community.</Text>
         </View>
 
         <View style={styles.form}>
-          {error && <Text style={styles.errorText}>{error}</Text>}
+          {error && <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>}
           
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>FULL NAME</Text>
+            <Text style={[styles.inputLabel, { color: colors.textDim }]}>Full name</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
               placeholder="John Doe"
-              placeholderTextColor={theme.colors.textDim}
+              placeholderTextColor={colors.textDim}
               value={fullName}
               onChangeText={setFullName}
             />
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>EMAIL ADDRESS</Text>
+            <Text style={[styles.inputLabel, { color: colors.textDim }]}>Email address</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
               placeholder="john@example.com"
-              placeholderTextColor={theme.colors.textDim}
+              placeholderTextColor={colors.textDim}
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
@@ -72,11 +74,11 @@ export default function RegisterScreen() {
           </View>
 
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>PASSWORD</Text>
+            <Text style={[styles.inputLabel, { color: colors.textDim }]}>Password</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
               placeholder="Choose a strong password"
-              placeholderTextColor={theme.colors.textDim}
+              placeholderTextColor={colors.textDim}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
@@ -84,18 +86,18 @@ export default function RegisterScreen() {
           </View>
 
           <TouchableOpacity 
-            style={[styles.registerButton, loading && styles.disabledButton]} 
+            style={[styles.registerButton, { backgroundColor: colors.accent }, loading && styles.disabledButton]} 
             onPress={handleRegister}
             disabled={loading}
           >
-            <Text style={styles.registerButtonText}>{loading ? 'CREATING ACCOUNT...' : 'CREATE ACCOUNT'}</Text>
+            <Text style={styles.registerButtonText}>{loading ? 'Creating account…' : 'Create account'}</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Already have an account? </Text>
+          <Text style={[styles.footerText, { color: colors.textDim }]}>Already have an account? </Text>
           <TouchableOpacity onPress={() => router.replace('/(auth)/login')}>
-            <Text style={styles.loginLink}>Sign In</Text>
+            <Text style={[styles.loginLink, { color: colors.accent }]}>Sign in</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -106,80 +108,75 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: '#F4F2EA',
   },
   scrollContent: {
     flexGrow: 1,
-    padding: 32,
+    padding: 28,
     justifyContent: 'center',
   },
   header: {
-    marginBottom: 48,
+    marginBottom: 36,
+  },
+  brand: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.6,
+    marginBottom: 18,
   },
   title: {
-    fontSize: 40,
-    fontWeight: '800',
-    color: theme.colors.text,
+    fontSize: 34,
+    fontWeight: '700',
+    letterSpacing: -0.8,
   },
   subtitle: {
     fontSize: 16,
-    color: theme.colors.textDim,
     marginTop: 8,
   },
   form: {
-    gap: 20,
+    gap: 18,
   },
   errorText: {
-    color: theme.colors.red,
     fontSize: 14,
     marginBottom: 8,
   },
   inputContainer: {
-    gap: 8,
+    gap: 7,
   },
   inputLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: theme.colors.accent,
-    letterSpacing: 1,
+    fontSize: 13,
+    fontWeight: '600',
   },
   input: {
-    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 8,
+    borderRadius: 14,
     padding: 16,
-    color: theme.colors.text,
     fontSize: 16,
   },
   registerButton: {
-    backgroundColor: theme.colors.accent,
-    borderRadius: 8,
-    padding: 18,
+    borderRadius: 14,
+    padding: 17,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 4,
   },
   disabledButton: {
     opacity: 0.7,
   },
   registerButtonText: {
-    color: 'white',
-    fontWeight: '800',
+    color: '#FFFFFF',
+    fontWeight: '600',
     fontSize: 16,
-    letterSpacing: 1,
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 48,
+    marginTop: 32,
   },
   footerText: {
-    color: theme.colors.textDim,
     fontSize: 14,
   },
   loginLink: {
-    color: theme.colors.accent,
     fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
 });

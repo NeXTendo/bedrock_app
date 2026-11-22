@@ -8,16 +8,42 @@ const config = getDefaultConfig(projectRoot);
 
 // 1. Watch all files within the monorepo
 config.watchFolders = [workspaceRoot];
+
 // 2. Let Metro know where to resolve packages and in what order
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ];
-// 3. Force Metro to resolve (sub)dependencies only from the `nodeModulesPaths`.
-// NOTE: expo-doctor flags this as a mismatch (expects false), but this is intentional for
-// monorepo setups — it prevents "phantom dependency" issues where Metro would accidentally
-// resolve packages from the workspace root rather than the app's declared dependencies.
-// See: https://docs.expo.dev/guides/monorepos/
-config.resolver.disableHierarchicalLookup = true;
+
+// 3. Fallback / mock resolution for web-only peer dependencies and native-only libraries
+config.resolver.extraNodeModules = {
+  ...config.resolver.extraNodeModules,
+  '@lottiefiles/dotlottie-react': path.resolve(projectRoot, 'mocks/dotlottie-react.js'),
+};
+
+const defaultResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  const currentPlatform = platform || context.platform;
+
+  if (moduleName === '@lottiefiles/dotlottie-react') {
+    return {
+      filePath: path.resolve(projectRoot, 'mocks/dotlottie-react.js'),
+      type: 'sourceFile',
+    };
+  }
+
+  // Intercept react-native-maps on web to prevent codegenNativeComponent crash
+  if (moduleName === 'react-native-maps' && currentPlatform !== 'ios' && currentPlatform !== 'android') {
+    return {
+      filePath: path.resolve(projectRoot, 'mocks/react-native-maps.js'),
+      type: 'sourceFile',
+    };
+  }
+
+  if (defaultResolveRequest) {
+    return defaultResolveRequest(context, moduleName, platform);
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
 
 module.exports = config;

@@ -1,37 +1,24 @@
-import { StyleSheet, View, Text, TouchableOpacity, Image, TextInput, ScrollView, Switch, ActivityIndicator, Platform } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Image, TextInput, ScrollView, Switch, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useReportStore } from '@/stores/reportStore';
-import { theme } from '@/constants/theme';
+import { useAppColors } from '@/hooks/useAppColors';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/stores/authStore';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { uploadImageAsync } from '@/lib/storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ReviewStepScreen() {
   const router = useRouter();
   const { draft, resetDraft } = useReportStore();
+  const colors = useAppColors();
   const { user } = useAuthStore();
   const insets = useSafeAreaInsets();
   const [description, setDescription] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const compressImage = async (uri: string) => {
-    try {
-      const result = await manipulateAsync(
-        uri,
-        [{ resize: { width: 1200 } }],
-        { compress: 0.7, format: SaveFormat.JPEG }
-      );
-      return result.uri;
-    } catch (err) {
-      console.error('Compression failed:', err);
-      return uri; // Fallback to original
-    }
-  };
 
   const handleSubmit = async () => {
     if (!draft.location || !draft.category || !user) return;
@@ -40,25 +27,21 @@ export default function ReviewStepScreen() {
     setError(null);
 
     try {
-      // 1. Compress photo
-      const originalPhoto = draft.photos[0];
-      const compressedPhoto = await compressImage(originalPhoto);
-      
-      // 2. Upload photo to Supabase Storage
-      const fileName = `${user.id}/${Date.now()}.jpg`;
-      
-      const formData = new FormData();
-      formData.append('file', {
-        uri: Platform.OS === 'ios' ? compressedPhoto.replace('file://', '') : compressedPhoto,
-        name: 'photo.jpg',
-        type: 'image/jpeg',
-      } as any);
+      // 1. Upload photo(s) to Supabase Storage if present
+      const photoUrls: string[] = [];
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('report-photos')
-        .upload(fileName, formData);
-
-      if (uploadError) throw uploadError;
+      if (draft.photos && draft.photos.length > 0) {
+        for (let i = 0; i < draft.photos.length; i++) {
+          const photoUri = draft.photos[i];
+          const fileName = `${user.id}/${Date.now()}_${i}.jpg`;
+          const uploadRes = await uploadImageAsync(photoUri, fileName, {
+            bucket: 'report-photos',
+            maxWidth: 1200,
+            quality: 0.7,
+          });
+          photoUrls.push(uploadRes.path);
+        }
+      }
 
       // 2. Create report via RPC
       const { error: reportError } = await supabase.rpc('create_report', {
@@ -68,7 +51,7 @@ export default function ReviewStepScreen() {
         p_lat: draft.location.latitude,
         p_lng: draft.location.longitude,
         p_address: draft.location.address,
-        p_photo_urls: [uploadData.path],
+        p_photo_urls: photoUrls,
         p_anonymous: isAnonymous
       });
 
@@ -78,58 +61,65 @@ export default function ReviewStepScreen() {
       resetDraft();
       router.replace('/(tabs)/explore');
     } catch (err: any) {
+      console.error('Failed to submit report:', err);
       setError(err.message || 'Failed to submit report');
       setSubmitting(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity 
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 10, backgroundColor: colors.background }]}>
+        <TouchableOpacity
           onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')} 
           style={styles.backButton}
         >
-          <IconSymbol name="chevron.right" color={theme.colors.text} size={24} style={{ transform: [{ rotate: '180deg' }] }} />
+          <IconSymbol name="chevron.left" color={colors.text} size={22} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Review Report</Text>
+        <Text style={[styles.headerTitle, { color: colors.text }]}>Review report</Text>
         <View style={{ width: 44 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Photo Preview */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>PHOTO</Text>
-          {draft.photos.length > 0 && (
-            <Image source={{ uri: draft.photos[0] }} style={styles.photo} />
-          )}
-        </View>
+        {draft.photos.length > 0 && (
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.textDim }]}>
+              Photos ({draft.photos.length})
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoStrip}>
+              {draft.photos.map((uri, index) => (
+                <Image key={`${uri}-${index}`} source={{ uri }} style={styles.photo} />
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Location Preview */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>LOCATION</Text>
-          <View style={styles.infoRow}>
-            <IconSymbol name="paperplane.fill" color={theme.colors.accent} size={20} />
-            <Text style={styles.infoText}>{draft.location?.address}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textDim }]}>Location</Text>
+          <View style={[styles.infoRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <IconSymbol name="mappin.and.ellipse" color={colors.accent} size={20} />
+            <Text style={[styles.infoText, { color: colors.text }]}>{draft.location?.address}</Text>
           </View>
         </View>
 
         {/* Category Preview */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>CATEGORY</Text>
-          <View style={styles.infoRow}>
-            <IconSymbol name="plus.circle.fill" color={theme.colors.accent} size={20} />
-            <Text style={styles.infoText}>{draft.category}</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textDim }]}>Category</Text>
+          <View style={[styles.infoRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <IconSymbol name="square.grid.2x2.fill" color={colors.accent} size={20} />
+            <Text style={[styles.infoText, { color: colors.text }]}>{draft.categoryName ?? 'Not selected'}</Text>
           </View>
         </View>
 
         {/* Description Input */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>DESCRIPTION (OPTIONAL)</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textDim }]}>Description (optional)</Text>
           <TextInput
-            style={styles.input}
+            style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }]}
             placeholder="Tell us more about the issue..."
-            placeholderTextColor={theme.colors.textDim}
+            placeholderTextColor={colors.textDim}
             multiline
             numberOfLines={4}
             value={description}
@@ -138,31 +128,31 @@ export default function ReviewStepScreen() {
         </View>
 
         {/* Anonymous Toggle */}
-        <View style={styles.toggleRow}>
-          <View>
-            <Text style={styles.toggleLabel}>Report Anonymously</Text>
-            <Text style={styles.toggleSublabel}>Your name won&apos;t be shown publicly.</Text>
+        <View style={[styles.toggleRow, { backgroundColor: colors.surface2 }]}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={[styles.toggleLabel, { color: colors.text }]}>Report anonymously</Text>
+            <Text style={[styles.toggleSublabel, { color: colors.textDim }]}>Your name won&apos;t be shown publicly.</Text>
           </View>
           <Switch
             value={isAnonymous}
             onValueChange={setIsAnonymous}
-            trackColor={{ false: theme.colors.surface2, true: theme.colors.accent }}
+            trackColor={{ false: colors.surface2, true: colors.accent }}
           />
         </View>
 
-        {error && <Text style={styles.errorText}>{error}</Text>}
+        {error && <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>}
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
         <TouchableOpacity 
-          style={[styles.submitButton, submitting && styles.disabledButton]} 
+          style={[styles.submitButton, { backgroundColor: colors.accent }, submitting && styles.disabledButton]}
           onPress={handleSubmit}
           disabled={submitting}
         >
           {submitting ? (
-            <ActivityIndicator color="white" />
+            <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text style={styles.submitText}>SUBMIT REPORT</Text>
+            <Text style={styles.submitText}>Submit report</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -173,7 +163,7 @@ export default function ReviewStepScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.bg,
+    backgroundColor: '#F4F2EA',
   },
   header: {
     paddingHorizontal: 20,
@@ -181,7 +171,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: theme.colors.bg,
   },
   backButton: {
     width: 44,
@@ -190,8 +179,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   headerTitle: {
-    color: theme.colors.text,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
   },
   content: {
@@ -201,39 +189,36 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sectionTitle: {
-    color: theme.colors.accent,
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1,
-    marginBottom: 12,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
   },
   photo: {
-    width: '100%',
-    height: 200,
+    width: 120,
+    height: 120,
     borderRadius: 12,
+  },
+  photoStrip: {
+    flexDirection: 'row',
+    gap: 10,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    backgroundColor: theme.colors.surface,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   infoText: {
-    color: theme.colors.text,
     fontSize: 15,
+    flex: 1,
   },
   input: {
-    backgroundColor: theme.colors.surface,
     borderRadius: 12,
     padding: 16,
-    color: theme.colors.text,
     fontSize: 15,
     borderWidth: 1,
-    borderColor: theme.colors.border,
     minHeight: 100,
     textAlignVertical: 'top',
   },
@@ -241,23 +226,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: theme.colors.surface2,
     padding: 16,
     borderRadius: 12,
     marginTop: 8,
   },
   toggleLabel: {
-    color: theme.colors.text,
     fontSize: 16,
     fontWeight: '600',
   },
   toggleSublabel: {
-    color: theme.colors.textDim,
     fontSize: 12,
     marginTop: 2,
   },
   errorText: {
-    color: theme.colors.red,
     marginTop: 16,
     textAlign: 'center',
   },
@@ -266,22 +247,18 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 8,
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-    backgroundColor: theme.colors.bg,
   },
   submitButton: {
-    backgroundColor: theme.colors.accent,
-    padding: 18,
-    borderRadius: 12,
+    padding: 17,
+    borderRadius: 14,
     alignItems: 'center',
   },
   disabledButton: {
     opacity: 0.7,
   },
   submitText: {
-    color: 'white',
-    fontWeight: '800',
-    fontSize: 16,
-    letterSpacing: 1,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 15,
   },
 });
