@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../contexts/AuthContext';
 import {
-  ArrowLeft, MapPin, Clock, User, Phone,
+  ArrowLeft, MapPin, Clock, User,
   ShieldAlert, Truck, X, ExternalLink, Users, Sparkles, UserRound, Check
 } from 'lucide-react';
 import { AssignedTeamMember, DEPARTMENT_ROLES, DepartmentRole } from '../../lib/departmentRoles';
+import { getPrivateImageUrl } from '../../lib/storage';
 
 interface DispatchTeam {
   id: string;
@@ -19,10 +21,36 @@ interface DispatchStaff {
   role: 'admin' | 'staff';
 }
 
+interface CurrentAssignmentMember {
+  profile_id: string;
+  assigned_role: string;
+  is_team_lead: boolean;
+  profiles?: { full_name: string | null } | null;
+}
+
+const incidentAnswerLabels: Record<string, string> = {
+  yes: 'Yes',
+  no: 'No',
+  unsure: 'Unsure',
+};
+
+const categoryDetailLabels: Record<string, string> = {
+  issue_ongoing: 'Issue still happening',
+  road_blocked: 'Road or footpath blocked',
+  water_collecting: 'Water collecting at damage',
+  leak_active: 'Leak still active',
+  access_affected: 'Nearby access or property affected',
+  waste_blocking_access: 'Waste blocking access',
+  hazardous_waste: 'Possible hazardous waste',
+  exposed_wires: 'Exposed wires',
+  sparks_or_fire: 'Sparks or fire',
+};
+
 type AssignmentMode = 'auto' | 'team' | 'worker';
 
 export default function ReportDetail() {
   const { deptCode, id } = useParams<{ deptCode: string, id: string }>();
+  const { profile } = useAuth();
   const [report, setReport] = useState<Record<string, any> | null>(null);
   const [loading, setLoading] = useState(true);
   // State for modals and actions
@@ -43,30 +71,63 @@ export default function ReportDetail() {
   const [deptId, setDeptId] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [activePhoto, setActivePhoto] = useState<string | null>(null);
+  const [publicDescription, setPublicDescription] = useState('');
+  const [publicAddress, setPublicAddress] = useState('');
+  const [reviewNote, setReviewNote] = useState('');
+  const [approvedPhotoIds, setApprovedPhotoIds] = useState<string[]>([]);
+  const [reviewError, setReviewError] = useState('');
+  const [savingReview, setSavingReview] = useState(false);
+  const [togglingMap, setTogglingMap] = useState(false);
+  const [toggleMapError, setToggleMapError] = useState('');
   const recommendationRequestId = useRef(0);
 
   async function fetchReport() {
     if (!id) return;
     try {
-      const { data } = await supabase
-        .from('reports')
-        .select(`
-          *,
-          categories(name, color),
-          profiles!user_id(full_name, phone),
-          status_history(*, profiles:changed_by(full_name)),
-          assignments(
-            *,
-            profiles:assigned_to(full_name),
-            teams(name),
-            assignment_members(*, profiles:profile_id(full_name))
-          ),
-          report_photos(image_url)
-        `)
-        .eq('id', id)
-        .single();
+      const [reportResult, duplicateResult, contextResult] = await Promise.all([
+        supabase
+          .from('department_reports')
+          .select('*')
+          .eq('id', id)
+          .single(),
+        supabase
+          .from('department_report_duplicate_flags')
+          .select('duplicate_report_id, duplicate_status, duplicate_created_at')
+          .eq('report_id', id)
+          .maybeSingle(),
+        supabase
+          .from('department_report_context')
+          .select('occurred_at, immediate_danger, category_details')
+          .eq('id', id)
+          .maybeSingle(),
+      ]);
 
-      setReport(data);
+      if (reportResult.error) throw reportResult.error;
+      if (duplicateResult.error) throw duplicateResult.error;
+      if (contextResult.error) throw contextResult.error;
+      const data = reportResult.data;
+
+      const reportPhotos = await Promise.all((data.report_photos || []).map(async (photo: Record<string, any>) => {
+        try {
+          return {
+            ...photo,
+            signed_url: await getPrivateImageUrl(photo.image_url, photo.bucket_id || 'report-photos'),
+          };
+        } catch (error) {
+          console.error('Unable to load report evidence:', error);
+          return { ...photo, signed_url: '' };
+        }
+      }));
+
+      setReport({
+        ...data,
+        report_photos: reportPhotos,
+        potential_duplicate: duplicateResult.data,
+        incident_context: contextResult.data,
+      });
+      setPublicDescription(data.public_description || '');
+      setPublicAddress(data.public_address || '');
+      setApprovedPhotoIds(reportPhotos.filter(photo => photo.is_public_approved).map(photo => photo.id));
       if (data && data.status) {
         setNewStatus(data.status);
       }
@@ -77,6 +138,53 @@ export default function ReportDetail() {
     }
   }
 
+  const toggleMapVisibility = async (visible: boolean) => {
+    if (!id) return;
+    setTogglingMap(true);
+    setToggleMapError('');
+    try {
+      const { error } = await supabase.rpc('set_report_map_visibility', {
+        p_report_id: id,
+        p_visible: visible,
+      });
+      if (error) { setToggleMapError(error.message); return; }
+      await fetchReport();
+    } catch (error) {
+      setToggleMapError(error instanceof Error ? error.message : 'Could not update map visibility.');
+    } finally {
+      setTogglingMap(false);
+    }
+  };
+
+  const saveVisibilityReview = async (publish: boolean) => {
+    if (!id) return;
+    setSavingReview(true);
+    setReviewError('');
+
+    try {
+      const { error } = await supabase.rpc('review_report_visibility', {
+        p_report_id: id,
+        p_publish: publish,
+        p_public_description: publish ? publicDescription : null,
+        p_public_address: publish ? publicAddress : null,
+        p_approved_photo_ids: publish ? approvedPhotoIds : [],
+        p_note: reviewNote || null,
+      });
+
+      if (error) {
+        setReviewError(error.message);
+        return;
+      }
+
+      setReviewNote('');
+      await fetchReport();
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : 'The review could not be saved.');
+    } finally {
+      setSavingReview(false);
+    }
+  };
+
   useEffect(() => {
     fetchReport();
 
@@ -84,11 +192,6 @@ export default function ReportDetail() {
     if (!id) return;
     const reportSubscription = supabase
       .channel(`report-changes-${id}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'reports', filter: `id=eq.${id}` },
-        () => fetchReport()
-      )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'status_history', filter: `report_id=eq.${id}` },
@@ -193,7 +296,7 @@ export default function ReportDetail() {
     const requestId = ++recommendationRequestId.current;
     setLoadingRecommendation(true);
     setAssignmentError('');
-    const { data, error } = await supabase.rpc('get_best_dispatch_recommendation', {
+    const { data, error } = await supabase.rpc('admin_get_best_dispatch_recommendation', {
       p_report_id: id,
     });
     if (requestId !== recommendationRequestId.current) return;
@@ -266,7 +369,6 @@ export default function ReportDetail() {
   const handleCrewAssignment = async () => {
     if (!id || !deptId) return;
     const isWorkerAssignment = assignmentMode === 'worker';
-    const selectedTeam = teams.find(team => team.id === selectedTeamId);
     const members = isWorkerAssignment
       ? selectedStaffId
         ? [{
@@ -297,7 +399,7 @@ export default function ReportDetail() {
     setUpdating(true);
     setAssignmentError('');
     try {
-      const { error: assignError } = await supabase.rpc('save_report_assignment', {
+      const { error: assignError } = await supabase.rpc('dispatch_report_assignment', {
         p_report_id: id,
         p_worker_id: isWorkerAssignment ? selectedStaffId : null,
         p_team_id: isWorkerAssignment ? null : selectedTeamId,
@@ -310,24 +412,12 @@ export default function ReportDetail() {
         return;
       }
 
-      const assignmentLabel = isWorkerAssignment
-        ? staffList.find(staff => staff.id === selectedStaffId)?.full_name || 'Staff member'
-        : selectedTeam?.name || 'Selected team';
-      const { error: statusError } = await supabase.rpc('update_report_status', {
-        p_report_id: id,
-        p_new_status: 'IN_PROGRESS',
-        p_note: `Assigned to ${assignmentLabel}. Notes: ${assignmentNotes || 'None'}`,
-      });
-
       setIsAssignModalOpen(false);
       setAssignmentNotes('');
       setSelectedStaffId('');
       setSelectedTeamId('');
       setAssignmentMembers([]);
       await fetchReport();
-      if (statusError) {
-        alert(`Assignment saved, but the report status could not be updated: ${statusError.message}`);
-      }
     } catch (err: any) {
       console.error(err);
       setAssignmentError(err.message || 'An unexpected error occurred while assigning this report.');
@@ -363,10 +453,30 @@ export default function ReportDetail() {
     );
   }
 
-  const currentAssignmentMembers = report.assignments?.assignment_members || [];
+  const currentAssignmentMembers: CurrentAssignmentMember[] = report.assignments?.assignment_members || [];
+  const incidentContext = report.incident_context;
+  const categoryAnswers = Object.entries(incidentContext?.category_details || {}) as [string, string][];
+  const hasFieldAssignment = Boolean(
+    report.assignments?.assigned_to
+    || report.assignments?.teams?.name
+    || currentAssignmentMembers.length
+  );
   const currentAssignmentName = report.assignments?.teams?.name
     || report.assignments?.profiles?.full_name
     || 'Staff member';
+  const isAssignedStaff = profile?.role === 'staff'
+    && currentAssignmentMembers.some(member => member.profile_id === profile.id);
+  const isTeamLead = isAssignedStaff
+    && currentAssignmentMembers.some(member => member.profile_id === profile.id && member.is_team_lead);
+  const isTeamAssignment = Boolean(report.assignments?.teams?.name);
+  const canResolve = profile?.role === 'admin'
+    || (isAssignedStaff && (!isTeamAssignment || isTeamLead));
+  const canUpdateOperationalStatus = profile?.role === 'admin'
+    || (isAssignedStaff && !['RESOLVED', 'REJECTED'].includes(report.status));
+  const openStatusModal = () => {
+    setNewStatus(profile?.role === 'admin' ? report.status : 'IN_PROGRESS');
+    setIsStatusModalOpen(true);
+  };
 
   return (
     <div className="space-y-5">
@@ -405,19 +515,27 @@ export default function ReportDetail() {
 
         {/* Action Buttons */}
         <div className="flex items-center space-x-2.5">
-          <button
-            onClick={() => setIsStatusModalOpen(true)}
-            className="px-3.5 py-1.5 bg-white border border-slate-200 text-slate-700 font-medium text-xs rounded-lg hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs"
-          >
-            Update Status
-          </button>
-          <button
-            onClick={openAssignmentModal}
-            className="px-3.5 py-1.5 bg-slate-900 text-white font-medium text-xs rounded-lg hover:bg-slate-800 transition-colors shadow-2xs flex items-center space-x-1.5"
-          >
-            <Truck size={14} />
-            <span>Assign Crew</span>
-          </button>
+          {canUpdateOperationalStatus ? (
+            <button
+              onClick={openStatusModal}
+              className="px-3.5 py-1.5 bg-white border border-slate-200 text-slate-700 font-medium text-xs rounded-lg hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-2xs"
+            >
+              Update Status
+            </button>
+          ) : (
+            <span className="text-[11px] text-slate-500">
+              Operational updates are limited to assigned workers and admins.
+            </span>
+          )}
+          {profile?.role === 'admin' && (
+            <button
+              onClick={openAssignmentModal}
+              className="px-3.5 py-1.5 bg-slate-900 text-white font-medium text-xs rounded-lg hover:bg-slate-800 transition-colors shadow-2xs flex items-center space-x-1.5"
+            >
+              <Truck size={14} />
+              <span>Assign Crew</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -452,6 +570,287 @@ export default function ReportDetail() {
             </div>
           </div>
 
+          {/* ── Public map toggle (quick show/hide) ── */}
+          {profile?.role === 'admin' && (
+          <div className="enterprise-card p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Public map visibility</h2>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Show or hide this report on the citizen map at any time. Reporter identity is never exposed.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                  report.is_public
+                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                    : 'bg-slate-100 text-slate-500 border border-slate-200'
+                }`}>
+                  {report.is_public ? 'Visible' : 'Hidden'}
+                </span>
+                {report.is_public ? (
+                  <button
+                    type="button"
+                    disabled={togglingMap}
+                    onClick={() => void toggleMapVisibility(false)}
+                    className="px-3 py-1.5 bg-white border border-red-300 text-red-700 text-xs font-semibold rounded-lg hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {togglingMap ? '…' : 'Hide'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={togglingMap}
+                    onClick={() => void toggleMapVisibility(true)}
+                    className="px-3 py-1.5 bg-emerald-700 text-white text-xs font-semibold rounded-lg hover:bg-emerald-800 disabled:opacity-50"
+                  >
+                    {togglingMap ? '…' : 'Show'}
+                  </button>
+                )}
+              </div>
+            </div>
+            {toggleMapError && (
+              <p role="alert" className="text-xs text-red-600 mt-2">{toggleMapError}</p>
+            )}
+          </div>
+          )}
+
+          {/* Public release review — full sanitized publish flow */}
+          {profile?.role === 'admin' && (
+          <div className="enterprise-card p-5">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3 mb-3">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Public release review</h2>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Only the approved summary, broad area and selected photos will be public. Exact coordinates and reporter identity stay restricted.
+                </p>
+              </div>
+              <span className={`shrink-0 px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                report.is_public
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+              }`}>
+                {report.is_public
+                  ? 'Published'
+                  : report.visibility_reviewed_at
+                    ? 'Private · reviewed'
+                    : 'Private · Needs review'}
+              </span>
+            </div>
+
+            {report.potential_duplicate && (
+              <div role="status" className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200">
+                <p className="text-xs font-semibold text-amber-900">Possible duplicate detected</p>
+                <p className="text-[11px] text-amber-800 mt-1">
+                  A recent active report in this category was found within 100 metres. Review both reports before deciding whether they describe the same incident.
+                </p>
+                <Link
+                  to={`/dept/${deptCode}/reports/${report.potential_duplicate.duplicate_report_id}`}
+                  className="inline-flex mt-2 text-[11px] font-semibold text-amber-900 underline"
+                >
+                  Review report {report.potential_duplicate.duplicate_report_id.slice(0, 8)} · {report.potential_duplicate.duplicate_status}
+                </Link>
+              </div>
+            )}
+
+            {/* ── Already published: read-only view ── */}
+            {report.is_public ? (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
+                  <Check size={16} className="mt-0.5 shrink-0 text-emerald-700" />
+                  <div>
+                    <p className="text-xs font-semibold text-emerald-900">This report has been published to the public feed.</p>
+                    <p className="text-[11px] text-emerald-800 mt-1">
+                      To retract it, use the <strong>Retract</strong> button below. To change the public text,
+                      retract first, edit, then re-publish — this avoids overwriting already-visible content by accident.
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Current public description</p>
+                  <p className="text-xs text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 leading-relaxed whitespace-pre-wrap">
+                    {report.public_description || '—'}
+                  </p>
+                </div>
+
+                {report.public_address && (
+                  <div>
+                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">Current public area</p>
+                    <p className="text-xs text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5">
+                      {report.public_address}
+                    </p>
+                  </div>
+                )}
+
+                {Array.isArray(report.report_photos) && report.report_photos.length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Approved photos</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {report.report_photos.map((photo: any) => {
+                        const isApproved = photo.is_public_approved;
+                        return (
+                          <div
+                            key={photo.id}
+                            className={`relative rounded-lg overflow-hidden border-2 ${
+                              isApproved ? 'border-emerald-400' : 'border-slate-200 opacity-40'
+                            }`}
+                          >
+                            {photo.signed_url ? (
+                              <img
+                                src={photo.signed_url}
+                                alt="Report evidence"
+                                className="w-full aspect-video object-cover"
+                              />
+                            ) : (
+                              <div className="w-full aspect-video bg-slate-100 flex items-center justify-center text-[11px] text-slate-400">
+                                Unavailable
+                              </div>
+                            )}
+                            <span className={`absolute top-1.5 right-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              isApproved
+                                ? 'bg-emerald-600 text-white'
+                                : 'bg-slate-600 text-white'
+                            }`}>
+                              {isApproved ? 'Public' : 'Private'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-slate-100">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Retraction note (optional)
+                  </label>
+                  <textarea
+                    value={reviewNote}
+                    onChange={event => setReviewNote(event.target.value)}
+                    maxLength={1000}
+                    placeholder="Reason for retracting this report from public view."
+                    className="w-full min-h-16 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-primary"
+                  />
+                  {reviewError && (
+                    <p role="alert" className="text-xs text-red-600 mt-2">{reviewError}</p>
+                  )}
+                  <button
+                    type="button"
+                    disabled={savingReview}
+                    onClick={() => void saveVisibilityReview(false)}
+                    className="mt-3 px-3.5 py-2 bg-white border border-red-300 text-red-700 text-xs font-semibold rounded-lg hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {savingReview ? 'Retracting…' : 'Retract from public feed'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ── Not yet published: full edit form ── */
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Sanitized public description
+                  </label>
+                  <textarea
+                    value={publicDescription}
+                    onChange={event => setPublicDescription(event.target.value)}
+                    maxLength={1000}
+                    placeholder="Write a concise public summary. Remove names, contact details, and sensitive operational information."
+                    className="w-full min-h-24 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Broad public area (optional)
+                  </label>
+                  <input
+                    value={publicAddress}
+                    onChange={event => setPublicAddress(event.target.value)}
+                    maxLength={200}
+                    placeholder="For example: Kabulonga area"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-primary"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Public area label shown to citizens (e.g. neighborhood or street name).
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-slate-700 mb-2">Evidence photo review</p>
+                  {Array.isArray(report.report_photos) && report.report_photos.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {report.report_photos.map((photo: any) => (
+                        <label key={photo.id} className="flex flex-col gap-2 p-2 border border-slate-200 rounded-lg cursor-pointer hover:border-primary transition-colors">
+                          {photo.signed_url ? (
+                            <img
+                              src={photo.signed_url}
+                              alt="Report evidence for review"
+                              className="w-full aspect-video object-cover rounded"
+                            />
+                          ) : (
+                            <div className="w-full aspect-video rounded bg-slate-100 flex items-center justify-center text-[11px] text-slate-500">
+                              Evidence unavailable
+                            </div>
+                          )}
+                          <span className="flex items-center gap-2 text-[11px] text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={approvedPhotoIds.includes(photo.id)}
+                              onChange={event => setApprovedPhotoIds(current => event.target.checked
+                                ? [...new Set([...current, photo.id])]
+                                : current.filter(photoId => photoId !== photo.id))}
+                            />
+                            Approve for public release
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400">No photos attached.</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Review note
+                  </label>
+                  <textarea
+                    value={reviewNote}
+                    onChange={event => setReviewNote(event.target.value)}
+                    maxLength={1000}
+                    placeholder="Required when keeping this report private."
+                    className="w-full min-h-16 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-800 focus:outline-none focus:border-primary"
+                  />
+                </div>
+
+                {reviewError && (
+                  <p role="alert" className="text-xs text-red-600">{reviewError}</p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={savingReview}
+                    onClick={() => void saveVisibilityReview(true)}
+                    className="px-3.5 py-2 bg-emerald-700 text-white text-xs font-semibold rounded-lg hover:bg-emerald-800 disabled:opacity-50"
+                  >
+                    {savingReview ? 'Saving…' : 'Publish sanitized report'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={savingReview}
+                    onClick={() => void saveVisibilityReview(false)}
+                    className="px-3.5 py-2 bg-white border border-slate-300 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Keep report private
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          )}
+
           {/* Evidence Photos */}
           <div className="enterprise-card p-5">
             <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-3">
@@ -464,7 +863,8 @@ export default function ReportDetail() {
             {Array.isArray(report.report_photos) && report.report_photos.length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {report.report_photos.map((photo: any, index: number) => {
-                  const url = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/report-photos/${photo.image_url}`;
+                  const url = photo.signed_url;
+                  if (!url) return null;
                   return (
                     <div
                       key={index}
@@ -525,7 +925,7 @@ export default function ReportDetail() {
                 ))}
 
               {/* Current Assignment */}
-              {report.assignments && (
+              {hasFieldAssignment && (
                 <div className="relative pl-5">
                   <span className="absolute -left-[7px] top-1.5 w-3 h-3 rounded-full border-2 border-white bg-emerald-600" />
                   <p className="text-xs font-semibold text-slate-900">
@@ -583,6 +983,45 @@ export default function ReportDetail() {
             )}
           </div>
 
+          <div className="enterprise-card p-5">
+            <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
+              Incident context
+            </h3>
+            <dl className="space-y-3 text-xs">
+              <div>
+                <dt className="text-slate-500">When it happened</dt>
+                <dd className="font-medium text-slate-800 mt-0.5">
+                  {incidentContext?.occurred_at
+                    ? new Date(incidentContext.occurred_at).toLocaleString()
+                    : 'Not sure'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Immediate danger reported</dt>
+                <dd className={`font-semibold mt-0.5 ${
+                  incidentContext?.immediate_danger === 'yes' ? 'text-red-700' : 'text-slate-800'
+                }`}>
+                  {incidentAnswerLabels[incidentContext?.immediate_danger] || 'Unsure'}
+                </dd>
+              </div>
+              {categoryAnswers.map(([key, value]) => (
+                <div key={key}>
+                  <dt className="text-slate-500">
+                    {categoryDetailLabels[key] || key.replace(/_/g, ' ')}
+                  </dt>
+                  <dd className="font-medium text-slate-800 mt-0.5">
+                    {incidentAnswerLabels[value] || 'Unsure'}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            {incidentContext?.immediate_danger === 'yes' && (
+              <p className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-medium text-red-800">
+                Review this report promptly using the department’s safety procedures.
+              </p>
+            )}
+          </div>
+
           {/* Assigned Team or Worker */}
           <div className="enterprise-card p-5">
             <div className="flex items-center justify-between mb-3">
@@ -590,15 +1029,17 @@ export default function ReportDetail() {
                 <Truck size={14} className="text-slate-400" />
                 <span>Assigned team or worker</span>
               </h3>
-              <button
-                onClick={openAssignmentModal}
-                className="text-xs text-primary font-semibold hover:underline"
-              >
-                {report.assignments ? 'Reassign' : 'Assign'}
-              </button>
+              {profile?.role === 'admin' && (
+                <button
+                  onClick={openAssignmentModal}
+                  className="text-xs text-primary font-semibold hover:underline"
+                >
+                  {hasFieldAssignment ? 'Reassign' : 'Assign'}
+                </button>
+              )}
             </div>
 
-            {report.assignments ? (
+            {hasFieldAssignment ? (
               <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
                 <p className="text-xs font-semibold text-slate-900">
                   {currentAssignmentName}
@@ -636,32 +1077,14 @@ export default function ReportDetail() {
               <span>Citizen Reporter</span>
             </h3>
 
-            {!report.is_anonymous && report.profiles ? (
-              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2">
-                <div className="flex items-center space-x-2.5">
-                  <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 font-semibold text-xs flex items-center justify-center">
-                    {report.profiles.full_name?.charAt(0) || 'C'}
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-slate-900">
-                      {report.profiles.full_name || 'Verified Citizen'}
-                    </p>
-                    <p className="text-[10px] text-slate-500 font-medium">Registered account</p>
-                  </div>
-                </div>
-                {report.profiles.phone && (
-                  <div className="flex items-center space-x-2 text-xs text-slate-600 pt-2 border-t border-slate-200/60">
-                    <Phone size={13} className="text-slate-400" />
-                    <span>{report.profiles.phone}</span>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-4 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg">
-                <p className="font-semibold text-slate-700">Anonymous Submission</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">Citizen chose to withhold contact identity.</p>
-              </div>
-            )}
+            <div className="text-center py-4 text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg">
+              <p className="font-semibold text-slate-700">
+                {report.is_anonymous ? 'Anonymous submission' : 'Reporter identity restricted'}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Reporter names and contact details are not shown in the department portal.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -685,7 +1108,7 @@ export default function ReportDetail() {
       )}
 
       {/* Update Status Modal */}
-      {isStatusModalOpen && (
+      {isStatusModalOpen && canUpdateOperationalStatus && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50">
           <div className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-md w-full overflow-hidden">
             <div className="p-5 border-b border-slate-100 flex items-center justify-between">
@@ -706,10 +1129,21 @@ export default function ReportDetail() {
                   onChange={(e) => setNewStatus(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-primary"
                 >
-                  <option value="NEW">NEW — Unreviewed</option>
-                  <option value="IN_PROGRESS">IN_PROGRESS — Field crew dispatched</option>
-                  <option value="RESOLVED">RESOLVED — Incident repaired / closed</option>
-                  <option value="REJECTED">REJECTED — Duplicate or invalid</option>
+                  {profile?.role === 'admin' ? (
+                    <>
+                      <option value="NEW">NEW — Unreviewed</option>
+                      <option value="VERIFIED">VERIFIED — Accepted for work</option>
+                      <option value="ASSIGNED">ASSIGNED — Assigned to field work</option>
+                      <option value="IN_PROGRESS">IN_PROGRESS — Field work underway</option>
+                      <option value="RESOLVED">RESOLVED — Incident repaired / closed</option>
+                      <option value="REJECTED">REJECTED — Duplicate or invalid</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="IN_PROGRESS">IN_PROGRESS — Field work underway</option>
+                      {canResolve && <option value="RESOLVED">RESOLVED — Field work complete</option>}
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -745,7 +1179,7 @@ export default function ReportDetail() {
       )}
 
       {/* Assign Worker or Team Modal */}
-      {isAssignModalOpen && (
+      {isAssignModalOpen && profile?.role === 'admin' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50">
           <div role="dialog" aria-modal="true" aria-labelledby="assignment-dialog-title" className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-5 border-b border-slate-100 flex items-start justify-between gap-4">

@@ -82,12 +82,8 @@ export default function ExploreScreen() {
     queryKey: ['explore-reports', selectedCategoryId, searchQuery, sortBy, statusFilter, userLocation?.coords.latitude],
     queryFn: async () => {
       let query = supabase
-        .from('reports')
-        .select(`
-          *,
-          categories (*),
-          report_photos (image_url)
-        `);
+        .from('public_reports')
+        .select('*');
 
       if (selectedCategoryId) {
         query = query.eq('category_id', selectedCategoryId);

@@ -5,7 +5,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { supabase } from '../../lib/supabase';
 import {
   LogOut, LayoutDashboard, FileText, Map, Users, Menu, X, Loader2,
-  Search, ShieldCheck, Building2, ChevronRight, UserRound
+  Search, ShieldCheck, ShieldAlert, Building2, ChevronRight, UserRound,
+  Truck, History
 } from 'lucide-react';
 import NotificationTray from './NotificationTray';
 
@@ -65,16 +66,25 @@ export default function DepartmentLayout() {
     navigate(`/dept/${deptCode}/reports?q=${encodeURIComponent(globalSearch.trim())}`);
   };
 
-  const navLinks = [
-    { name: 'Dashboard', path: `/dept/${deptCode}/dashboard`, icon: LayoutDashboard },
-    { name: 'Reports', path: `/dept/${deptCode}/reports`, icon: FileText },
-    { name: 'Map View', path: `/dept/${deptCode}/map`, icon: Map },
-  ];
-
-  if (profile?.role === 'admin') {
-    navLinks.push({ name: 'Staff', path: `/dept/${deptCode}/team`, icon: UserRound });
-    navLinks.push({ name: 'Teams', path: `/dept/${deptCode}/teams`, icon: Users });
-  }
+  const navLinks = profile?.role === 'admin'
+    ? [
+        { name: 'Dashboard', path: `/dept/${deptCode}/dashboard`, icon: LayoutDashboard },
+        { name: 'Review Queue', path: `/dept/${deptCode}/review`, icon: ShieldAlert },
+        { name: 'Reports', path: `/dept/${deptCode}/reports`, icon: FileText },
+        { name: 'Dispatch', path: `/dept/${deptCode}/dispatch`, icon: Truck },
+        { name: 'Map View', path: `/dept/${deptCode}/map`, icon: Map },
+        { name: 'Audit', path: `/dept/${deptCode}/audit`, icon: History },
+        { name: 'Staff', path: `/dept/${deptCode}/team`, icon: UserRound },
+        { name: 'Teams', path: `/dept/${deptCode}/teams`, icon: Users },
+      ]
+    : [
+        { name: 'Dashboard', path: `/dept/${deptCode}/dashboard`, icon: LayoutDashboard },
+      { name: 'Team', path: `/dept/${deptCode}/teams`, icon: Users },
+        { name: 'My Reports', path: `/dept/${deptCode}/reports`, icon: FileText },
+        { name: 'My Assignments', path: `/dept/${deptCode}/dispatch`, icon: Truck },
+        { name: 'Job Map', path: `/dept/${deptCode}/map`, icon: Map },
+        { name: 'My Activity', path: `/dept/${deptCode}/audit`, icon: History },
+      ];
 
   // Get active page name for breadcrumb
   const isLinkActive = (path: string) => location.pathname === path || location.pathname.startsWith(`${path}/`);
@@ -246,7 +256,9 @@ export default function DepartmentLayout() {
               type="text"
               value={globalSearch}
               onChange={e => setGlobalSearch(e.target.value)}
-              placeholder="Search reports by ID, street, or keyword..."
+              placeholder={profile?.role === 'admin'
+                ? 'Search department reports...'
+                : 'Search my assigned reports...'}
               className="w-full pl-8 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs placeholder-slate-400 focus:outline-none focus:bg-white focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
             />
           </form>

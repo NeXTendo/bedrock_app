@@ -6,7 +6,31 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-type StaffAction = 'list' | 'invite' | 'update' | 'deactivate' | 'activate';
+type StaffAction = 'list' | 'invite' | 'update' | 'deactivate' | 'activate' | 'reset-password';
+
+function getStaffRedirectUrl(path: string): { url: string } | { error: string } {
+  const appUrl = Deno.env.get('STAFF_INVITE_REDIRECT_URL');
+  if (!appUrl) {
+    return { error: 'Staff auth redirects are not configured' };
+  }
+
+  try {
+    const redirectUrl = new URL(appUrl);
+    if (
+      redirectUrl.protocol !== 'https:'
+      && !(redirectUrl.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(redirectUrl.hostname))
+    ) {
+      return { error: 'Staff auth redirect URL must use HTTPS' };
+    }
+
+    redirectUrl.pathname = path;
+    redirectUrl.search = '';
+    redirectUrl.hash = '';
+    return { url: redirectUrl.toString() };
+  } catch {
+    return { error: 'Staff auth redirect URL is invalid' };
+  }
+}
 
 function respond(status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
@@ -46,7 +70,7 @@ Deno.serve(async (request) => {
 
   const action = payload.action as StaffAction;
   const departmentId = typeof payload.department_id === 'string' ? payload.department_id : '';
-  if (!['list', 'invite', 'update', 'deactivate', 'activate'].includes(action) || !departmentId) {
+  if (!['list', 'invite', 'update', 'deactivate', 'activate', 'reset-password'].includes(action) || !departmentId) {
     return respond(400, { error: 'A valid action and department are required' });
   }
 
@@ -105,28 +129,43 @@ Deno.serve(async (request) => {
     const fullName = typeof payload.full_name === 'string' ? payload.full_name.trim() : '';
     const phone = typeof payload.phone === 'string' ? payload.phone.trim() : '';
     const role = payload.role === 'admin' ? 'admin' : payload.role === 'staff' ? 'staff' : null;
-
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !fullName || !role) {
       return respond(400, { error: 'Provide a valid email, full name, and staff role' });
     }
 
+    const invitationRedirect = getStaffRedirectUrl('/auth/accept-invite');
+    if ('error' in invitationRedirect) {
+      console.error(invitationRedirect.error);
+      return respond(500, { error: invitationRedirect.error });
+    }
+
     const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
       data: { full_name: fullName, role, department_id: departmentId },
+      redirectTo: invitationRedirect.url,
     });
     if (error || !data.user) {
       return respond(400, { error: error?.message || 'The invitation could not be created' });
     }
 
-    if (phone) {
-      const { error: phoneError } = await adminClient
-        .from('profiles')
-        .update({ phone })
-        .eq('id', data.user.id)
-        .eq('department_id', departmentId);
-      if (phoneError) {
-        console.error('Staff invitation succeeded but phone number could not be saved:', phoneError);
-        return respond(500, { error: 'Invitation sent, but the phone number could not be saved' });
+    const { error: profileError } = await adminClient
+      .from('profiles')
+      .update({
+        full_name: fullName,
+        phone: phone || null,
+        role,
+        department_id: departmentId,
+      })
+      .eq('id', data.user.id)
+      .select('id')
+      .single();
+
+    if (profileError) {
+      console.error('Staff profile provisioning failed:', profileError.message);
+      const { error: cleanupError } = await adminClient.auth.admin.deleteUser(data.user.id);
+      if (cleanupError) {
+        console.error('Failed to clean up an incompletely provisioned staff invitation:', cleanupError);
       }
+      return respond(500, { error: 'The staff account could not be provisioned' });
     }
 
     return respond(200, { profile_id: data.user.id, message: 'Invitation sent' });
@@ -146,6 +185,70 @@ Deno.serve(async (request) => {
     .single();
   if (targetError || !target) {
     return respond(404, { error: 'Staff member was not found in this department' });
+  }
+
+  if (action === 'reset-password') {
+    if (target.is_suspended) {
+      return respond(409, { error: 'Reactivate this staff account before requesting password recovery' });
+    }
+
+    const { data: { user: targetUser }, error: targetUserError } = await adminClient.auth.admin.getUserById(profileId);
+    if (targetUserError || !targetUser?.email) {
+      console.error('Staff password recovery could not load the target account:', targetUserError?.message);
+      return respond(500, { error: 'The staff account email could not be verified' });
+    }
+    if (!targetUser.email_confirmed_at && !targetUser.confirmed_at) {
+      return respond(409, { error: 'This staff member must accept their invitation before password recovery' });
+    }
+
+    const redirect = getStaffRedirectUrl('/auth/reset-password');
+    if ('error' in redirect) {
+      console.error(redirect.error);
+      return respond(500, { error: redirect.error });
+    }
+
+    const cooldownSince = new Date(Date.now() - 60_000).toISOString();
+    const { data: recentRequest, error: cooldownError } = await adminClient
+      .from('staff_security_events')
+      .select('id')
+      .eq('target_id', profileId)
+      .eq('event_type', 'password_reset_email_requested')
+      .gte('created_at', cooldownSince)
+      .limit(1)
+      .maybeSingle();
+    if (cooldownError) {
+      console.error('Staff password recovery cooldown could not be checked:', cooldownError.message);
+      return respond(500, { error: 'Password recovery is not available until the security log is configured' });
+    }
+    if (recentRequest) {
+      return respond(429, { error: 'A password recovery email was requested recently. Wait one minute and try again.' });
+    }
+
+    const { error: auditError } = await adminClient
+      .from('staff_security_events')
+      .insert({
+        actor_id: user.id,
+        target_id: profileId,
+        department_id: departmentId,
+        event_type: 'password_reset_email_requested',
+      });
+    if (auditError) {
+      console.error('Staff password recovery request could not be audited:', auditError.message);
+      return respond(500, { error: 'Password recovery could not be recorded securely' });
+    }
+
+    const recoveryClient = createClient(supabaseUrl, anonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { error: recoveryError } = await recoveryClient.auth.resetPasswordForEmail(targetUser.email, {
+      redirectTo: redirect.url,
+    });
+    if (recoveryError) {
+      console.error('Supabase could not send a staff password recovery email:', recoveryError.message);
+      return respond(502, { error: 'The password recovery email could not be sent. Check Auth email settings and retry later.' });
+    }
+
+    return respond(200, { message: 'Password recovery email sent' });
   }
 
   const nextRole = payload.role === 'admin' || payload.role === 'staff'

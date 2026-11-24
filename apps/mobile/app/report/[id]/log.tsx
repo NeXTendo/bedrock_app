@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -104,42 +103,26 @@ export default function FieldLogScreen() {
   const colors = theme[currentTheme as 'light' | 'dark'];
   const isDark = currentTheme === 'dark';
 
-  const [activeFilter, setActiveFilter] = useState<'all' | 'notes'>('all');
-
   const { data: report, isLoading, isError, refetch } = useQuery({
     queryKey: ['report-detail-log', id],
     queryFn: async () => {
       if (!id) throw new Error('No report ID');
-      // Primary query with status history & assignments
-      try {
-        const { data, error } = await supabase
-          .from('reports')
-          .select(`
-            *,
-            categories (*),
-            profiles:user_id (full_name),
-            status_history (*, changed_by_profile:profiles!status_history_changed_by_fkey (full_name)),
-            assignments (*, assigned_to_profile:profiles!assignments_assigned_to_fkey (full_name))
-          `)
-          .eq('id', id)
-          .single();
-        if (error) throw error;
-        return data;
-      } catch {
-        // Fallback without assignments
-        const { data, error } = await supabase
-          .from('reports')
-          .select(`
-            *,
-            categories (*),
-            profiles:user_id (full_name),
-            status_history (*, changed_by_profile:profiles!status_history_changed_by_fkey (full_name))
-          `)
-          .eq('id', id)
-          .single();
-        if (error) throw error;
-        return data;
-      }
+      const { data: ownedReport, error: ownerError } = await supabase
+        .from('my_reports')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (ownerError) throw ownerError;
+      if (ownedReport) return ownedReport;
+
+      const { data, error } = await supabase
+        .from('public_reports')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) throw new Error('Report not found or not publicly available');
+      return data;
     },
     enabled: !!id,
   });
@@ -189,19 +172,14 @@ export default function FieldLogScreen() {
     .slice()
     .sort((a, b) => new Date(b.changed_at).getTime() - new Date(a.changed_at).getTime());
 
-  // Filter if notes requested
-  const displayedHistory = activeFilter === 'notes'
-    ? sortedHistory.filter(h => !!h.note)
-    : sortedHistory;
+  const displayedHistory = sortedHistory;
 
   const resolvedAt = report.status?.toLowerCase() === 'resolved'
     ? report.resolved_at || sortedHistory[0]?.changed_at
     : undefined;
   const totalDuration = getDuration(report.created_at, resolvedAt);
 
-  // Find assigned crew details
-  const assignment = Array.isArray(report.assignments) ? report.assignments[0] : report.assignments;
-  const assignedCrewName = assignment?.assigned_to_profile?.full_name || assignment?.crew_name || null;
+  const assignedCrewName = null;
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -315,36 +293,6 @@ export default function FieldLogScreen() {
               {displayedHistory.length} {displayedHistory.length === 1 ? 'update' : 'updates'}
             </Text>
           </View>
-          <View style={styles.filterTabs}>
-            <TouchableOpacity
-              onPress={() => {
-                if (hapticsEnabled) Haptics.selectionAsync();
-                setActiveFilter('all');
-              }}
-              style={[
-                styles.filterTab,
-                { backgroundColor: activeFilter === 'all' ? colors.accentSoft : 'transparent', borderColor: activeFilter === 'all' ? colors.accent : colors.border }
-              ]}
-            >
-              <Text style={[styles.filterTabText, { color: activeFilter === 'all' ? colors.accent : colors.textDim }]}>
-                All
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                if (hapticsEnabled) Haptics.selectionAsync();
-                setActiveFilter('notes');
-              }}
-              style={[
-                styles.filterTab,
-                { backgroundColor: activeFilter === 'notes' ? colors.accentSoft : 'transparent', borderColor: activeFilter === 'notes' ? colors.accent : colors.border }
-              ]}
-            >
-              <Text style={[styles.filterTabText, { color: activeFilter === 'notes' ? colors.accent : colors.textDim }]}>
-                Notes
-              </Text>
-            </TouchableOpacity>
-          </View>
         </View>
 
         {/* ── Timeline entries ── */}
@@ -413,12 +361,10 @@ export default function FieldLogScreen() {
               <IconSymbol name="clock.arrow.circlepath" color={colors.accent} size={24} />
             </View>
             <Text style={[styles.emptyTitle, { color: colors.text }]}>
-              {activeFilter === 'notes' ? 'No notes yet' : 'No activity updates yet'}
+              No activity updates yet
             </Text>
             <Text style={[styles.emptySubtitle, { color: colors.textDim }]}>
-              {activeFilter === 'notes'
-                ? 'Dispatch notes will appear here when added.'
-                : 'Status changes and field notes will appear here as work progresses.'}
+              Public status changes will appear here as work progresses.
             </Text>
           </View>
         )}

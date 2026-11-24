@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useRecentlyViewedStore } from '@/stores/useRecentlyViewedStore';
+import { getPrivateImageUrl } from '@/lib/storage';
 import * as Haptics from 'expo-haptics';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -50,10 +51,6 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
-function getReportPhotoUrl(imageUrl: string): string {
-  return `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/report-photos/${imageUrl}`;
-}
-
 const LIFECYCLE_STAGES = [
   { key: 'reported', label: 'Reported' },
   { key: 'verified', label: 'Verified' },
@@ -61,6 +58,24 @@ const LIFECYCLE_STAGES = [
   { key: 'in_progress', label: 'In progress' },
   { key: 'resolved', label: 'Resolved' },
 ];
+
+const reportContextLabels: Record<string, string> = {
+  issue_ongoing: 'Issue still happening',
+  road_blocked: 'Road or footpath blocked',
+  water_collecting: 'Water collecting at damage',
+  leak_active: 'Leak still active',
+  access_affected: 'Nearby access or property affected',
+  waste_blocking_access: 'Waste blocking access',
+  hazardous_waste: 'Possible hazardous waste',
+  exposed_wires: 'Exposed wires',
+  sparks_or_fire: 'Sparks or fire',
+};
+
+const answerLabels: Record<string, string> = {
+  yes: 'Yes',
+  no: 'No',
+  unsure: 'Unsure',
+};
 
 function getStageIndex(status: string): number {
   const s = status?.toLowerCase() || '';
@@ -124,10 +139,27 @@ function ReportCarouselCard({ report, onPress, colors }: {
   onPress: () => void;
   colors: any;
 }) {
+  const photo = report.report_photos?.[0];
+  const imagePath = report.photoUrl || photo?.image_url;
+  const bucket = photo?.bucket_id || 'report-photos';
+  const [signedPhoto, setSignedPhoto] = useState<{ key: string; url: string } | null>(null);
+  const photoKey = imagePath ? `${bucket}:${imagePath}` : null;
+  const photoUrl = photoKey && signedPhoto?.key === photoKey ? signedPhoto.url : null;
   const sc = getStatusColor(report.status, colors);
-  const photo = report.photoUrl || (report.report_photos?.[0]
-    ? `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/report-photos/${report.report_photos[0].image_url}`
-    : null);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!imagePath) return () => { active = false; };
+
+    getPrivateImageUrl(imagePath, bucket)
+      .then(url => {
+        if (active) setSignedPhoto({ key: `${bucket}:${imagePath}`, url });
+      })
+      .catch(error => console.error('Unable to load report photo:', error));
+
+    return () => { active = false; };
+  }, [imagePath, bucket]);
 
   return (
     <TouchableOpacity
@@ -136,8 +168,8 @@ function ReportCarouselCard({ report, onPress, colors }: {
       activeOpacity={0.8}
     >
       <View style={carouselCardStyle.imgContainer}>
-        {photo ? (
-          <Image source={{ uri: photo }} style={carouselCardStyle.img} />
+        {photoUrl ? (
+          <Image source={{ uri: photoUrl }} style={carouselCardStyle.img} />
         ) : (
           <View style={[carouselCardStyle.imgPlaceholder, { backgroundColor: colors.surface2 }]}>
             <IconSymbol
@@ -254,6 +286,7 @@ export default function ReportDetailsScreen() {
     index: 0,
   });
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
+  const [reportPhotoUrls, setReportPhotoUrls] = useState<string[]>([]);
 
   const currentTheme = storeTheme === 'auto' ? (systemColorScheme || 'light') : storeTheme;
   const colors = theme[currentTheme as 'light' | 'dark'];
@@ -261,34 +294,60 @@ export default function ReportDetailsScreen() {
 
   // ── Fetch main report ──
   const { data: report, isLoading, isError, error: queryError } = useQuery({
-    queryKey: ['report', id],
+    queryKey: ['report', id, userId],
     queryFn: async () => {
       if (!id) throw new Error('No report ID');
+      if (userId) {
+        const { data: ownedReport, error: ownerError } = await supabase
+          .from('my_reports')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+        if (ownerError) throw ownerError;
+        if (ownedReport) {
+          const { data: incidentContext, error: contextError } = await supabase
+            .from('my_report_context')
+            .select('occurred_at, immediate_danger, category_details')
+            .eq('id', id)
+            .maybeSingle();
+          if (contextError) throw contextError;
+          return { ...ownedReport, incident_context: incidentContext };
+        }
+      }
+
       const { data, error } = await supabase
-        .from('reports')
-        .select(`
-          *,
-          categories (*),
-          report_photos (image_url, is_primary, uploaded_at),
-          profiles:user_id (full_name),
-          status_history (*, changed_by_profile:profiles!status_history_changed_by_fkey (full_name)),
-          comments (*, comment_profile:profiles!comments_user_id_fkey (full_name))
-        `)
+        .from('public_reports')
+        .select('*')
         .eq('id', id)
-        .single();
+        .maybeSingle();
       if (error) throw error;
+      if (!data) throw new Error('Report not found or not publicly available');
       return data;
     },
     enabled: !!id,
   });
 
-  const reportPhotoUrls = useMemo(() => [...(report?.report_photos || [])]
-    .sort((first, second) => {
-      const primaryDifference = Number(Boolean(second.is_primary)) - Number(Boolean(first.is_primary));
-      if (primaryDifference !== 0) return primaryDifference;
-      return (first.uploaded_at || '').localeCompare(second.uploaded_at || '');
-    })
-    .map(photo => getReportPhotoUrl(photo.image_url)), [report?.report_photos]);
+  useEffect(() => {
+    let active = true;
+    const photos = [...(report?.report_photos || [])]
+      .sort((first, second) => {
+        const primaryDifference = Number(Boolean(second.is_primary)) - Number(Boolean(first.is_primary));
+        if (primaryDifference !== 0) return primaryDifference;
+        return (first.uploaded_at || '').localeCompare(second.uploaded_at || '');
+      });
+
+    Promise.all(photos.map(photo => getPrivateImageUrl(
+      photo.image_url,
+      photo.bucket_id || 'report-photos'
+    ).catch(error => {
+      console.error('Unable to load report photo:', error);
+      return '';
+    }))).then(urls => {
+      if (active) setReportPhotoUrls(urls.filter(Boolean));
+    });
+
+    return () => { active = false; };
+  }, [report?.report_photos]);
   const activePhotoIndex = photoPosition.reportId === report?.id ? photoPosition.index : 0;
 
   // ── Record recently viewed ──
@@ -316,8 +375,8 @@ export default function ReportDetailsScreen() {
       const lng = Number(report.longitude);
       const delta = 0.015; // ~1.5km
       const { data, error } = await supabase
-        .from('reports')
-        .select(`id, description, address, status, latitude, longitude, categories (name, icon, color), report_photos (image_url)`)
+        .from('public_reports')
+        .select('*')
         .neq('id', report.id)
         .gte('latitude', lat - delta)
         .lte('latitude', lat + delta)
@@ -418,7 +477,7 @@ export default function ReportDetailsScreen() {
     );
   }
 
-  const isOwner = !!(userId && report.user_id === userId);
+  const isOwner = !!report.is_owner;
   const currentStage = getStageIndex(report.status);
   const statusColor = getStatusColor(report.status, colors);
   const dept = getDepartment(report.categories?.name);
@@ -501,6 +560,15 @@ export default function ReportDetailsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingTop: insets.top + 64, paddingBottom: insets.bottom + 120 }}
       >
+        {isOwner && !report.is_public && (
+          <View style={[styles.reviewNotice, { backgroundColor: colors.warning + '18', borderColor: colors.warning + '55' }]}>
+            <IconSymbol name="lock.fill" color={colors.warning} size={16} />
+            <Text style={[styles.reviewNoticeText, { color: colors.text }]}>
+              This report is private while the department reviews it. It will not appear in public browsing until approved.
+            </Text>
+          </View>
+        )}
+
         {/* ── Hero photo ── */}
         {photoUrl ? (
           <View style={styles.heroWrap}>
@@ -570,6 +638,36 @@ export default function ReportDetailsScreen() {
               {report.description || 'No description provided.'}
             </Text>
           </View>
+
+          {isOwner && report.incident_context && (
+            <>
+              <SectionHeader label="Incident details" colors={colors} />
+              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.contextLabel, { color: colors.textDim }]}>When it happened</Text>
+                <Text style={[styles.contextValue, { color: colors.text }]}>
+                  {report.incident_context.occurred_at
+                    ? new Date(report.incident_context.occurred_at).toLocaleString()
+                    : 'Not sure'}
+                </Text>
+
+                <Text style={[styles.contextLabel, { color: colors.textDim }]}>Immediate danger</Text>
+                <Text style={[styles.contextValue, { color: colors.text }]}>
+                  {answerLabels[report.incident_context.immediate_danger] || 'Unsure'}
+                </Text>
+
+                {Object.entries(report.incident_context.category_details || {}).map(([key, value]) => (
+                  <View key={key}>
+                    <Text style={[styles.contextLabel, { color: colors.textDim }]}>
+                      {reportContextLabels[key] || key.replace(/_/g, ' ')}
+                    </Text>
+                    <Text style={[styles.contextValue, { color: colors.text }]}>
+                      {answerLabels[String(value)] || 'Unsure'}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          )}
 
           {/* ── Resolution progress (tap to open full field log) ── */}
           <TouchableOpacity
@@ -655,7 +753,7 @@ export default function ReportDetailsScreen() {
             >
               <Circle
                 center={{ latitude, longitude }}
-                radius={60}
+                radius={isOwner ? 60 : 750}
                 fillColor={colors.accent + '30'}
                 strokeColor={colors.accent + '80'}
                 strokeWidth={1.5}
@@ -672,8 +770,11 @@ export default function ReportDetailsScreen() {
                   {report.address || 'View report location'}
                 </Text>
                 <Text style={[styles.mapCoords, { color: colors.textDim }]}>
-                  {Math.abs(latitude).toFixed(4)}° S, {Math.abs(longitude).toFixed(4)}° E
+                  {Math.abs(latitude).toFixed(isOwner ? 5 : 2)}° S, {Math.abs(longitude).toFixed(isOwner ? 5 : 2)}° E
                 </Text>
+                {!isOwner && (
+                  <Text style={[styles.mapCoords, { color: colors.textDim }]}>Approximate public location</Text>
+                )}
               </View>
               <View style={styles.mapAction}>
                 <Text style={[styles.mapActionText, { color: colors.accent }]}>Open map</Text>
@@ -687,15 +788,15 @@ export default function ReportDetailsScreen() {
           <View style={[styles.reporterRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[styles.avatar, { backgroundColor: colors.accentSoft }]}>
               <Text style={[styles.avatarText, { color: colors.accent }]}>
-                {(report.profiles?.full_name || 'C').charAt(0).toUpperCase()}
+                {isOwner ? 'Y' : 'C'}
               </Text>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.reporterName, { color: colors.text }]}>
-                {isOwner ? 'You' : (report.profiles?.full_name || 'Anonymous citizen')}
+                {isOwner ? 'You' : 'Community member'}
               </Text>
               <Text style={[styles.reporterSub, { color: colors.textDim }]}>
-                {timeAgo(report.created_at)} · Lusaka
+                {timeAgo(report.created_at)}
               </Text>
             </View>
             {isOwner && (
@@ -1025,6 +1126,17 @@ const styles = StyleSheet.create({
 
   /* Body */
   body: { paddingHorizontal: 16, paddingTop: 18 },
+  reviewNotice: {
+    margin: 14,
+    marginBottom: 0,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  reviewNoticeText: { flex: 1, fontSize: 12, lineHeight: 18 },
   descriptionCard: {
     borderRadius: 14,
     borderWidth: 1,
@@ -1032,6 +1144,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   description: { fontSize: 15, fontWeight: '400', lineHeight: 23 },
+  contextLabel: { fontSize: 11, fontWeight: '600', marginTop: 12 },
+  contextValue: { fontSize: 14, lineHeight: 20, marginTop: 3 },
 
   /* Reporter */
   reporterRow: {

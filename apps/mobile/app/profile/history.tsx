@@ -24,12 +24,8 @@ export default function SubmissionHistoryScreen() {
     queryKey: ['user-reports', user?.id],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('reports')
-        .select(`
-          *,
-          report_photos (image_url),
-          categories (name, icon, color)
-        `)
+        .from('my_reports')
+        .select('*')
         .eq('user_id', user?.id)
         .order('created_at', { ascending: false });
       

@@ -3,8 +3,9 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import {
   Users, CheckCircle2, Truck, ArrowLeft, Search, ShieldCheck,
-  Plus, Pencil, UserRoundX, UserRoundCheck, X,
+  Plus, Pencil, UserRoundX, UserRoundCheck, KeyRound, X,
 } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface StaffProfile {
   id: string;
@@ -57,6 +58,7 @@ async function getStaffFunctionErrorMessage(error: { name: string; message: stri
 
 export default function TeamSettings() {
   const { deptCode } = useParams<{ deptCode: string }>();
+  const { profile } = useAuth();
   const [staffList, setStaffList] = useState<StaffProfile[]>([]);
   const [departmentName, setDepartmentName] = useState<string>('Department');
   const [departmentId, setDepartmentId] = useState<string | null>(null);
@@ -64,6 +66,7 @@ export default function TeamSettings() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
@@ -97,7 +100,7 @@ export default function TeamSettings() {
       }),
       supabase
         .from('assignments')
-        .select('id, assigned_to, report:reports(status), assignment_members(profile_id)')
+        .select('id, assigned_to, report_id, assignment_members(profile_id)')
         .eq('department_id', dept.id),
     ]);
 
@@ -113,10 +116,24 @@ export default function TeamSettings() {
       return;
     }
 
+    const reportIds = [...new Set((assignmentResult.data || []).map(assignment => assignment.report_id))];
+    const { data: reports, error: reportsError } = reportIds.length > 0
+      ? await supabase
+        .from('department_reports')
+        .select('id, status')
+        .in('id', reportIds)
+      : { data: [], error: null };
+    if (reportsError) {
+      setError(reportsError.message);
+      setLoading(false);
+      return;
+    }
+
+    const statusByReportId = new Map((reports || []).map(report => [report.id, report.status]));
     const assignmentIdsByProfile = new Map<string, Set<string>>();
     for (const assignment of assignmentResult.data || []) {
-      const report = Array.isArray(assignment.report) ? assignment.report[0] : assignment.report;
-      if (!report || ['RESOLVED', 'REJECTED'].includes(report.status)) continue;
+      const status = statusByReportId.get(assignment.report_id);
+      if (!status || ['RESOLVED', 'REJECTED'].includes(status)) continue;
       const ids = new Set<string>();
       if (assignment.assigned_to) ids.add(assignment.assigned_to);
       (assignment.assignment_members || []).forEach(member => ids.add(member.profile_id));
@@ -227,6 +244,36 @@ export default function TeamSettings() {
     await fetchTeam();
   };
 
+  const sendPasswordReset = async (member: StaffProfile) => {
+    if (!departmentId) return;
+    if (!window.confirm(
+      `Send a one-time password recovery link to ${member.email}? They must use their verified email inbox to choose a new password.`
+    )) {
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    setNotice('');
+    const { error: invokeError } = await supabase.functions.invoke('manage-staff', {
+      body: {
+        action: 'reset-password',
+        department_id: departmentId,
+        profile_id: member.id,
+      },
+    });
+
+    if (invokeError) {
+      console.error('Password recovery could not be requested through manage-staff:', invokeError);
+      setError(await getStaffFunctionErrorMessage(invokeError));
+      setSaving(false);
+      return;
+    }
+
+    setNotice(`A password recovery email was sent to ${member.email}. Existing sessions are revoked after the password is changed.`);
+    setSaving(false);
+  };
+
   if (loading) {
     return (
       <div className="space-y-5 animate-pulse">
@@ -288,6 +335,11 @@ export default function TeamSettings() {
       {error && (
         <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           {error}
+        </div>
+      )}
+      {notice && (
+        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {notice}
         </div>
       )}
 
@@ -440,6 +492,18 @@ export default function TeamSettings() {
                         >
                           <Pencil size={14} />
                         </button>
+                        {member.id !== profile?.id && !member.is_suspended && member.email && (
+                          <button
+                            type="button"
+                            onClick={() => void sendPasswordReset(member)}
+                            disabled={saving}
+                            aria-label={`Send password recovery email to ${member.full_name || 'staff member'}`}
+                            title="Send password recovery email"
+                            className="rounded-md p-2 text-slate-500 transition hover:bg-amber-50 hover:text-amber-700 disabled:opacity-50"
+                          >
+                            <KeyRound size={14} />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => void toggleStaffAccess(member)}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   StyleSheet,
   View,
@@ -20,7 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 
 import { supabase } from '@/lib/supabase';
-import { uploadImageAsync } from '@/lib/storage';
+import { getPrivateImageUrl, uploadImageAsync } from '@/lib/storage';
 import { useAuthStore } from '@/stores/authStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { theme } from '@/constants/theme';
@@ -55,6 +55,7 @@ export default function ProfileSettingsScreen() {
   const [phoneOverride, setPhoneOverride] = useState<string | null>(null);
   const [selectedWard, setSelectedWard] = useState('Ward 8 · Rhodes Park / Fairview');
   const [avatarOverride, setAvatarOverride] = useState<string | null>(null);
+  const [avatarStoragePath, setAvatarStoragePath] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState(false);
@@ -87,6 +88,21 @@ export default function ProfileSettingsScreen() {
   const setFullName = setFullNameOverride;
   const setPhone = setPhoneOverride;
   const setAvatarUri = setAvatarOverride;
+
+  useEffect(() => {
+    let active = true;
+    if (!profile?.avatar_url || avatarStoragePath || avatarOverride) {
+      return () => { active = false; };
+    }
+
+    getPrivateImageUrl(profile.avatar_url)
+      .then(url => {
+        if (active) setAvatarOverride(url);
+      })
+      .catch(error => console.error('Unable to load profile avatar:', error));
+
+    return () => { active = false; };
+  }, [profile?.avatar_url, avatarStoragePath, avatarOverride]);
 
   // Pick Image from library
   const handlePickImage = async () => {
@@ -145,12 +161,12 @@ export default function ProfileSettingsScreen() {
         upsert: true,
       });
 
-      const publicUrl = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/report-photos/${uploadRes.path}`;
-      setAvatarUri(publicUrl);
+      setAvatarStoragePath(uploadRes.path);
+      setAvatarUri(await getPrivateImageUrl(uploadRes.path));
     } catch (err) {
       console.error('Avatar upload error:', err);
-      // If storage upload fails, use local URI preview
-      setAvatarUri(localUri);
+      setAvatarStoragePath(null);
+      setAvatarUri(profile?.avatar_url ?? null);
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -168,7 +184,7 @@ export default function ProfileSettingsScreen() {
       const updates = {
         full_name: fullName.trim(),
         phone: phone.trim(),
-        avatar_url: avatarUri,
+        avatar_url: avatarStoragePath ?? profile?.avatar_url ?? null,
       };
 
       const { error } = await supabase

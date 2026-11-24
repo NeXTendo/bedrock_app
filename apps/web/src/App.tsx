@@ -1,16 +1,23 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate, useParams } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { supabase } from './lib/supabase'
 import Login from './pages/Login'
+import AcceptStaffInvite from './pages/AcceptStaffInvite'
+import ResetPassword from './pages/ResetPassword'
 import DepartmentLayout from './components/layout/DepartmentLayout'
 import Dashboard from './pages/department/Dashboard'
+import ReviewQueue from './pages/department/ReviewQueue'
 import ReportList from './pages/department/ReportList'
+import StaffReports from './pages/department/StaffReports'
 import ReportDetail from './pages/department/ReportDetail'
 import MapView from './pages/department/Map'
+import Dispatch from './pages/department/Dispatch'
+import AuditLog from './pages/department/AuditLog'
 import TeamSettings from './pages/department/TeamSettings'
 import Teams from './pages/department/Teams'
+import StaffTeamWorkspace from './pages/department/StaffTeamWorkspace'
 import { Loader2 } from 'lucide-react'
 
 /**
@@ -26,6 +33,28 @@ import { Loader2 } from 'lucide-react'
 function DeptFallback() {
   const { deptCode } = useParams<{ deptCode: string }>();
   return <Navigate to={`/dept/${deptCode}/dashboard`} replace />;
+}
+
+function AdminOnly() {
+  const { profile, isLoading } = useAuth();
+  const { deptCode } = useParams<{ deptCode: string }>();
+
+  if (isLoading) return null;
+  if (profile?.role !== 'admin') {
+    return <Navigate to={`/dept/${deptCode}/dashboard`} replace />;
+  }
+
+  return <Outlet />;
+}
+
+function DepartmentReports() {
+  const { profile } = useAuth();
+  return profile?.role === 'admin' ? <ReportList /> : <StaffReports />;
+}
+
+function TeamWorkspace() {
+  const { profile } = useAuth();
+  return profile?.role === 'admin' ? <Teams /> : <StaffTeamWorkspace />;
 }
 
 function RootRedirect() {
@@ -89,17 +118,24 @@ function App() {
 
             {/* Public: login */}
             <Route path="/login" element={<Login />} />
+            <Route path="/auth/accept-invite" element={<AcceptStaffInvite />} />
+            <Route path="/auth/reset-password" element={<ResetPassword />} />
 
             {/* Protected: department workspace */}
             <Route path="/dept/:deptCode" element={<DepartmentLayout />}>
               {/* /dept/roads → /dept/roads/dashboard */}
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
-              <Route path="reports" element={<ReportList />} />
+              <Route element={<AdminOnly />}>
+                <Route path="review" element={<ReviewQueue />} />
+                <Route path="team" element={<TeamSettings />} />
+              </Route>
+              <Route path="teams" element={<TeamWorkspace />} />
+              <Route path="reports" element={<DepartmentReports />} />
               <Route path="reports/:id" element={<ReportDetail />} />
+              <Route path="dispatch" element={<Dispatch />} />
               <Route path="map" element={<MapView />} />
-              <Route path="team" element={<TeamSettings />} />
-              <Route path="teams" element={<Teams />} />
+              <Route path="audit" element={<AuditLog />} />
               {/* Unknown sub-path → department dashboard (absolute) */}
               <Route path="*" element={<DeptFallback />} />
             </Route>

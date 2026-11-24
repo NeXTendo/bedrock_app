@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Image, Share, useColorScheme, Platform } from 'react-native';
 import { getCategoryColor, theme } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useSettingsStore } from '@/stores/useSettingsStore';
+import { getPrivateImageUrl } from '@/lib/storage';
 
 interface ReportCardProps {
   report: {
@@ -22,6 +23,7 @@ interface ReportCardProps {
     };
     report_photos?: {
       image_url: string;
+      bucket_id?: string;
     }[];
   };
   userLocation?: {
@@ -44,6 +46,26 @@ export function ReportCard({ report, userLocation, variant = 'standard' }: Repor
 
   const colors = theme[currentTheme as 'light' | 'dark'];
   const categoryColor = getCategoryColor(report.categories?.icon, colors);
+  const photo = report.report_photos?.[0];
+  const imagePath = photo?.image_url;
+  const bucket = photo?.bucket_id || 'report-photos';
+  const photoKey = imagePath ? `${bucket}:${imagePath}` : null;
+  const [signedPhoto, setSignedPhoto] = useState<{ key: string; url: string } | null>(null);
+  const photoUrl = photoKey && signedPhoto?.key === photoKey ? signedPhoto.url : null;
+
+  useEffect(() => {
+    let active = true;
+
+    if (!imagePath) return () => { active = false; };
+
+    getPrivateImageUrl(imagePath, bucket)
+      .then(url => {
+        if (active) setSignedPhoto({ key: `${bucket}:${imagePath}`, url });
+      })
+      .catch(error => console.error('Unable to load report photo:', error));
+
+    return () => { active = false; };
+  }, [imagePath, bucket]);
 
   const calculateDistance = () => {
     if (!userLocation || !report.latitude || !report.longitude) return null;
@@ -94,10 +116,6 @@ export function ReportCard({ report, userLocation, variant = 'standard' }: Repor
 
   const statusColor = getStatusColor(report.status);
   const statusBackground = `${statusColor}1A`;
-  const photoUrl = report.report_photos?.[0]
-    ? `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/report-photos/${report.report_photos[0].image_url}`
-    : null;
-
   // ── Grid variant ─────────────────────────────────────────────────────────
   if (variant === 'grid') {
     return (

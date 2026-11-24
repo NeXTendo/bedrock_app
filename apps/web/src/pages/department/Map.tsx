@@ -74,8 +74,8 @@ export default function MapView() {
         const catIds = (cats as { id: string }[] | null)?.map(c => c.id) || [];
         if (catIds.length > 0) {
           const { data } = await supabase
-            .from('reports')
-            .select('*, categories(name, color)')
+            .from('department_reports')
+            .select('*')
             .in('category_id', catIds)
             .not('latitude', 'is', null)
             .not('longitude', 'is', null);

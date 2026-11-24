@@ -7,6 +7,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { supabase } from '@/lib/supabase';
 import { useEffect, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getReportQuestions } from '@/constants/reportQuestions';
 
 interface Category {
   id: string;
@@ -18,7 +19,7 @@ export default function CategoryStepScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colors = useAppColors();
-  const { setDraft } = useReportStore();
+  const { draft, setDraft } = useReportStore();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -43,7 +44,13 @@ export default function CategoryStepScreen() {
   }, []);
 
   const handleSelect = (category: Category) => {
-    setDraft({ category: category.id, categoryName: category.name });
+    const categoryDetails = Object.fromEntries(
+      getReportQuestions(category.name).map(({ key }) => [
+        key,
+        draft.category === category.id ? draft.categoryDetails[key] || 'unsure' : 'unsure',
+      ])
+    );
+    setDraft({ category: category.id, categoryName: category.name, categoryDetails });
     router.push('/report/create/review');
   };
 

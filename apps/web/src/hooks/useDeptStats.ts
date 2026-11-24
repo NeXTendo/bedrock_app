@@ -120,8 +120,8 @@ export function useDeptStats(deptId: string): DeptStats {
 
       // 2. Fetch all reports for those categories
       const { data: reports, error: reportsError } = await supabase
-        .from('reports')
-        .select('*, categories(name, color)')
+        .from('department_reports')
+        .select('*')
         .in('category_id', categoryIds)
         .order('created_at', { ascending: false });
 

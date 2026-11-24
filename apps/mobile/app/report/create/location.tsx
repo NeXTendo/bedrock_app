@@ -1,11 +1,11 @@
 import MapView, { Region } from 'react-native-maps';
-import { StyleSheet, View, Text, TouchableOpacity, Animated } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useReportStore } from '@/stores/reportStore';
 import { useLocation } from '@/hooks/useLocation';
 import { useAppColors } from '@/hooks/useAppColors';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 
@@ -14,10 +14,16 @@ export default function LocationStepScreen() {
   const insets = useSafeAreaInsets();
   const colors = useAppColors();
   const mapRef = useRef<MapView>(null);
-  const pinAnim = useMemo(() => new Animated.Value(0), []);
+  const hasManuallyMovedMap = useRef(false);
+  const pendingRecenter = useRef(false);
 
   const { setDraft } = useReportStore();
-  const { location: userLocation, address: userAddress } = useLocation();
+  const {
+    location: userLocation,
+    address: userAddress,
+    errorMsg: locationError,
+    isLoading: isLocationLoading,
+  } = useLocation();
   const [selectedCoord, setSelectedCoord] = useState<[number, number] | null>(null);
 
   const currentCoord: [number, number] | null = selectedCoord ?? (
@@ -27,44 +33,43 @@ export default function LocationStepScreen() {
   );
 
   useEffect(() => {
-    if (userLocation && !selectedCoord) {
-      mapRef.current?.animateToRegion({
-        latitude: userLocation.coords.latitude,
-        longitude: userLocation.coords.longitude,
-        latitudeDelta: 0.005,
-        longitudeDelta: 0.005,
-      });
-    }
-  }, [userLocation, selectedCoord]);
+    if (!userLocation) return;
+    if (!pendingRecenter.current && hasManuallyMovedMap.current) return;
+
+    pendingRecenter.current = false;
+    const coordinate: [number, number] = [
+      userLocation.coords.longitude,
+      userLocation.coords.latitude,
+    ];
+    setSelectedCoord(coordinate);
+    mapRef.current?.animateToRegion({
+      latitude: coordinate[1],
+      longitude: coordinate[0],
+      latitudeDelta: 0.005,
+      longitudeDelta: 0.005,
+    }, 500);
+  }, [userLocation]);
 
   const recenter = () => {
-    if (userLocation && mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: userLocation.coords.latitude,
-        longitude: userLocation.coords.longitude,
-        latitudeDelta: 0.005,
-        longitudeDelta: 0.005,
-      }, 1000);
-      setSelectedCoord([userLocation.coords.longitude, userLocation.coords.latitude]);
+    if (!userLocation) {
+      pendingRecenter.current = true;
+      if (!isLocationLoading) {
+        Alert.alert('Location unavailable', locationError || 'Your location could not be determined.');
+      }
+      return;
     }
-  };
-
-  const onRegionChange = () => {
-    Animated.timing(pinAnim, {
-      toValue: -20,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
+    pendingRecenter.current = false;
+    setSelectedCoord([userLocation.coords.longitude, userLocation.coords.latitude]);
+    mapRef.current?.animateToRegion({
+      latitude: userLocation.coords.latitude,
+      longitude: userLocation.coords.longitude,
+      latitudeDelta: 0.005,
+      longitudeDelta: 0.005,
+    }, 500);
   };
 
   const onRegionChangeComplete = (region: Region) => {
     setSelectedCoord([region.longitude, region.latitude]);
-    Animated.spring(pinAnim, {
-      toValue: 0,
-      friction: 4,
-      tension: 40,
-      useNativeDriver: true,
-    }).start();
   };
 
   const handleNext = () => {
@@ -97,11 +102,11 @@ export default function LocationStepScreen() {
         <MapView 
           ref={mapRef}
           style={styles.map} 
-          onRegionChange={onRegionChange}
+          onPanDrag={() => { hasManuallyMovedMap.current = true; }}
           onRegionChangeComplete={onRegionChangeComplete}
           initialRegion={{
-            latitude: currentCoord?.[1] || -15.4167,
-            longitude: currentCoord?.[0] || 28.2833,
+            latitude: currentCoord?.[1] ?? -15.4167,
+            longitude: currentCoord?.[0] ?? 28.2833,
             latitudeDelta: 0.01,
             longitudeDelta: 0.01,
           }}
@@ -109,23 +114,23 @@ export default function LocationStepScreen() {
           showsMyLocationButton={false}
         />
         
-        {/* Animated Fixed Center Pin */}
-        <Animated.View 
-          style={[
-            styles.centerPinContainer, 
-            { transform: [{ translateY: pinAnim }] }
-          ]} 
+        <View
+          style={styles.centerPinContainer}
           pointerEvents="none"
         >
           <View style={styles.pinShadow} />
           <IconSymbol name="mappin.and.ellipse" color={colors.error} size={48} />
-        </Animated.View>
+        </View>
 
         <TouchableOpacity 
           style={[styles.recenterButton, { bottom: 40, backgroundColor: colors.surface, borderColor: colors.border }]} 
           onPress={recenter}
+          accessibilityRole="button"
+          accessibilityLabel="Center map on my location"
         >
-          <IconSymbol name="location.fill" color={colors.text} size={22} />
+          {isLocationLoading && !userLocation
+            ? <ActivityIndicator size="small" color={colors.text} />
+            : <IconSymbol name="location.fill" color={colors.text} size={22} />}
         </TouchableOpacity>
       </View>
 

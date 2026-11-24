@@ -56,8 +56,8 @@ function computeClusters(reports: any[], latitudeDelta: number, colors: typeof t
 
     const cellLat = Math.floor(lat / gridSize);
     const cellLng = Math.floor(lng / gridSize);
-    const categoryKey = report.category_id || report.categories?.icon || 'other';
-    const key = `${cellLat}_${cellLng}_${categoryKey}`;
+    // Cluster purely by spatial proximity so mixed issues in the same area form one cluster instead of overlapping beacons
+    const key = `${cellLat}_${cellLng}`;
 
     if (!grid.has(key)) {
       grid.set(key, {
@@ -80,7 +80,58 @@ function computeClusters(reports: any[], latitudeDelta: number, colors: typeof t
       cell.reports.length;
   }
 
-  return Array.from(grid.values());
+  const rawClusters = Array.from(grid.values());
+
+  // Merge any adjacent clusters whose centroids ended up too close to prevent beacon overlap
+  const mergedClusters: Cluster[] = [];
+  const minSeparation = gridSize * 0.6;
+
+  for (const cluster of rawClusters) {
+    const existing = mergedClusters.find(
+      (m) =>
+        Math.abs(m.lat - cluster.lat) < minSeparation &&
+        Math.abs(m.lng - cluster.lng) < minSeparation
+    );
+
+    if (existing) {
+      existing.reports.push(...cluster.reports);
+      existing.lat =
+        existing.reports.reduce((s: number, r: any) => s + Number(r.latitude), 0) /
+        existing.reports.length;
+      existing.lng =
+        existing.reports.reduce((s: number, r: any) => s + Number(r.longitude), 0) /
+        existing.reports.length;
+    } else {
+      mergedClusters.push(cluster);
+    }
+  }
+
+  // Set the dominant category icon & color for each cluster
+  for (const cluster of mergedClusters) {
+    if (cluster.reports.length > 1) {
+      const iconCounts: Record<string, { count: number; color: string }> = {};
+      for (const r of cluster.reports) {
+        const icon = r.categories?.icon || 'flame.fill';
+        const color = r.categories?.color || getCategoryColor(icon, colors);
+        if (!iconCounts[icon]) iconCounts[icon] = { count: 0, color };
+        iconCounts[icon].count++;
+      }
+      let topIcon = 'flame.fill';
+      let topColor = colors.accent;
+      let topCount = 0;
+      for (const [icon, data] of Object.entries(iconCounts)) {
+        if (data.count > topCount) {
+          topCount = data.count;
+          topIcon = icon;
+          topColor = data.color;
+        }
+      }
+      cluster.categoryIcon = topIcon;
+      cluster.color = topColor;
+    }
+  }
+
+  return mergedClusters;
 }
 
 export default function HomeScreen() {
@@ -110,12 +161,8 @@ export default function HomeScreen() {
     queryKey: ['reports'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('reports')
-        .select(`
-          *,
-          categories (*),
-          report_photos (image_url)
-        `);
+        .from('public_reports')
+        .select('*');
 
       if (error) throw error;
       return data;

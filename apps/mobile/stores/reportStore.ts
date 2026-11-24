@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ReportAnswer } from '@/constants/reportQuestions';
 
 interface ReportDraft {
   photos: string[];
@@ -11,6 +12,9 @@ interface ReportDraft {
   categoryName: string | null;
   subcategory: string | null;
   severity: 'low' | 'medium' | 'high' | 'critical';
+  occurredAt: string | null;
+  immediateDanger: ReportAnswer;
+  categoryDetails: Record<string, ReportAnswer>;
   description: string;
   isAnonymous: boolean;
 }
@@ -28,6 +32,9 @@ const initialDraft: ReportDraft = {
   categoryName: null,
   subcategory: null,
   severity: 'medium',
+  occurredAt: null,
+  immediateDanger: 'unsure',
+  categoryDetails: {},
   description: '',
   isAnonymous: false,
 };

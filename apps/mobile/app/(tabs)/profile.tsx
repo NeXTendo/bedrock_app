@@ -1,4 +1,5 @@
 import { StyleSheet, View, Text, TouchableOpacity, ScrollView, useColorScheme, Image } from 'react-native';
+import { useEffect, useState } from 'react';
 import { theme } from '@/constants/theme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useRouter } from 'expo-router';
@@ -8,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { AppHeader } from '@/components/AppHeader';
+import { getPrivateImageUrl } from '@/lib/storage';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuthStore();
@@ -21,6 +23,7 @@ export default function ProfileScreen() {
     : storeTheme;
   
   const colors = theme[currentTheme as 'light' | 'dark'];
+  const [signedAvatar, setSignedAvatar] = useState<{ path: string; url: string } | null>(null);
 
   const { data: profile } = useQuery({
     queryKey: ['profile', user?.id],
@@ -37,16 +40,33 @@ export default function ProfileScreen() {
     enabled: !!user,
   });
 
+  useEffect(() => {
+    let active = true;
+
+    if (!profile?.avatar_url) return () => { active = false; };
+
+    getPrivateImageUrl(profile.avatar_url)
+      .then(url => {
+        if (active) setSignedAvatar({ path: profile.avatar_url, url });
+      })
+      .catch(error => console.error('Unable to load profile avatar:', error));
+
+    return () => { active = false; };
+  }, [profile?.avatar_url]);
+  const avatarUrl = signedAvatar && signedAvatar.path === profile?.avatar_url
+    ? signedAvatar.url
+    : null;
+
   const { data: stats } = useQuery({
     queryKey: ['user-stats', user?.id],
     queryFn: async () => {
       const { count: totalReports, error: reportsError } = await supabase
-        .from('reports')
+        .from('my_reports')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user?.id);
 
       const { count: resolvedReports, error: resolvedError } = await supabase
-        .from('reports')
+        .from('my_reports')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user?.id)
         .eq('status', 'RESOLVED');
@@ -93,9 +113,9 @@ export default function ProfileScreen() {
         <View style={styles.identitySection}>
           <View style={styles.avatarContainer}>
             <View style={[styles.avatar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              {profile?.avatar_url ? (
+              {avatarUrl ? (
                 <Image 
-                  source={{ uri: profile.avatar_url }} 
+                  source={{ uri: avatarUrl }}
                   style={styles.avatarImage} 
                 />
               ) : (

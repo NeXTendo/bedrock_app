@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import {
-  Search, ChevronRight, AlertCircle, Clock, CheckCircle2,
+  Search, ChevronRight, AlertCircle, Clock, CheckCircle2, ShieldAlert,
   XCircle, MapPin, X
 } from 'lucide-react';
 
@@ -13,60 +13,86 @@ interface ReportRow {
   severity: string;
   address?: string;
   created_at: string;
+  is_public: boolean;
+  visibility_reviewed_at: string | null;
+  potentialDuplicate: boolean;
   categories: { name: string; icon: string; color: string } | null;
 }
 
 export default function ReportList() {
   const { deptCode } = useParams<{ deptCode: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [search, setSearch] = useState(searchParams.get('q') || '');
+  const search = searchParams.get('q') || '';
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [severityFilter, setSeverityFilter] = useState('ALL');
+  const defaultVisibility = 'ALL';
+  const [visibilityFilter, setVisibilityFilter] = useState(defaultVisibility);
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    const q = searchParams.get('q');
-    if (q !== null && q !== search) {
-      setSearch(q);
-    }
-  }, [searchParams]);
+    let active = true;
 
-  useEffect(() => {
     async function fetchReports() {
       setLoading(true);
-      if (!deptCode) return;
+      setLoadError(null);
 
-      const { data: dept } = await supabase
-        .from('departments')
-        .select('id')
-        .eq('code', deptCode.toUpperCase())
-        .single();
+      try {
+        if (!deptCode) {
+          setReports([]);
+          return;
+        }
 
-      if (dept) {
-        const { data: categories } = await supabase
+        const { data: dept, error: departmentError } = await supabase
+          .from('departments')
+          .select('id')
+          .eq('code', deptCode.toUpperCase())
+          .single();
+        if (departmentError) throw departmentError;
+
+        const { data: categories, error: categoriesError } = await supabase
           .from('categories')
           .select('id')
           .eq('dept_id', dept.id);
+        if (categoriesError) throw categoriesError;
 
-        const categoryIds = (categories as { id: string }[] | null)?.map(c => c.id) || [];
-
-        if (categoryIds.length > 0) {
-          const { data } = await supabase
-            .from('reports')
-            .select('*, categories(name, icon, color)')
-            .in('category_id', categoryIds)
-            .order('created_at', { ascending: false });
-
-          setReports(data || []);
-        } else {
+        const categoryIds = (categories as { id: string }[] | null)?.map(category => category.id) || [];
+        if (categoryIds.length === 0) {
           setReports([]);
+          return;
         }
+
+        const { data, error: reportsError } = await supabase
+          .from('department_reports')
+          .select('*')
+          .in('category_id', categoryIds)
+          .order('created_at', { ascending: false });
+        if (reportsError) throw reportsError;
+
+        const reportRows = data || [];
+        const { data: duplicateFlags, error: duplicateError } = await supabase
+          .from('department_report_duplicate_flags')
+          .select('report_id');
+        if (duplicateError) throw duplicateError;
+        if (!active) return;
+
+        const potentialDuplicateIds = new Set((duplicateFlags || []).map(flag => flag.report_id));
+        setReports(reportRows.map(report => ({
+          ...report,
+          potentialDuplicate: potentialDuplicateIds.has(report.id),
+        })));
+      } catch (error) {
+        if (active) {
+          setLoadError(error instanceof Error ? error.message : 'Reports could not be loaded.');
+        }
+      } finally {
+        if (active) setLoading(false);
       }
-      setLoading(false);
     }
 
-    fetchReports();
+    void fetchReports();
+    return () => { active = false; };
   }, [deptCode]);
 
   const getStatusBadge = (status: string) => {
@@ -154,6 +180,10 @@ export default function ReportList() {
       return false;
     }
 
+    if (visibilityFilter === 'PENDING' && (r.is_public || r.visibility_reviewed_at)) return false;
+    if (visibilityFilter === 'PUBLIC' && !r.is_public) return false;
+    if (visibilityFilter === 'WITHHELD' && (!r.visibility_reviewed_at || r.is_public)) return false;
+
     return true;
   });
 
@@ -164,7 +194,7 @@ export default function ReportList() {
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Incident Reports</h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Review incoming citizen reports, triage priority, and dispatch departmental staff.
+            Search the department record, review status, severity, and public visibility.
           </p>
         </div>
 
@@ -182,7 +212,6 @@ export default function ReportList() {
             type="text"
             value={search}
             onChange={e => {
-              setSearch(e.target.value);
               if (e.target.value) {
                 setSearchParams({ q: e.target.value });
               } else {
@@ -195,7 +224,6 @@ export default function ReportList() {
           {search && (
             <button
               onClick={() => {
-                setSearch('');
                 setSearchParams({});
               }}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
@@ -238,12 +266,26 @@ export default function ReportList() {
             </select>
           </div>
 
-          {(statusFilter !== 'ALL' || severityFilter !== 'ALL' || search) && (
+          <div className="flex items-center space-x-1.5">
+            <span className="text-xs text-slate-500 font-medium hidden sm:inline">Visibility:</span>
+            <select
+              value={visibilityFilter}
+              onChange={e => setVisibilityFilter(e.target.value)}
+              className="bg-white border border-slate-200 rounded-lg text-xs font-medium px-2.5 py-1.5 text-slate-700 focus:outline-none focus:border-primary"
+            >
+              <option value="PENDING">Needs review</option>
+              <option value="PUBLIC">Published</option>
+              <option value="WITHHELD">Kept private</option>
+              <option value="ALL">All visibility</option>
+            </select>
+          </div>
+
+          {(statusFilter !== 'ALL' || severityFilter !== 'ALL' || visibilityFilter !== defaultVisibility || search) && (
             <button
               onClick={() => {
                 setStatusFilter('ALL');
                 setSeverityFilter('ALL');
-                setSearch('');
+                setVisibilityFilter(defaultVisibility);
                 setSearchParams({});
               }}
               className="text-xs text-slate-500 hover:text-slate-900 underline px-1"
@@ -261,6 +303,10 @@ export default function ReportList() {
             <div className="w-6 h-6 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
             <p className="text-xs font-medium text-slate-500">Loading reports from database…</p>
           </div>
+        ) : loadError ? (
+          <div role="alert" className="p-8 text-center text-sm text-red-700">
+            Reports could not be loaded: {loadError}
+          </div>
         ) : filteredReports.length === 0 ? (
           <div className="p-12 text-center text-slate-500">
             <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3 text-slate-400">
@@ -268,7 +314,7 @@ export default function ReportList() {
             </div>
             <p className="text-sm font-semibold text-slate-800">No matching reports found</p>
             <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              {search || statusFilter !== 'ALL' || severityFilter !== 'ALL'
+              {search || statusFilter !== 'ALL' || severityFilter !== 'ALL' || visibilityFilter !== defaultVisibility
                 ? 'Try adjusting your search criteria or resetting filters.'
                 : 'There are currently no active reports filed for this department.'}
             </p>
@@ -309,6 +355,12 @@ export default function ReportList() {
                           <p className="font-semibold text-slate-900 group-hover:text-primary transition-colors">
                             {report.categories?.name || 'Uncategorized'}
                           </p>
+                          {report.potentialDuplicate && (
+                            <span className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-semibold">
+                              <ShieldAlert size={11} />
+                              Possible duplicate
+                            </span>
+                          )}
                           <p className="text-slate-600 line-clamp-1 mt-0.5">
                             {report.description}
                           </p>
@@ -325,6 +377,17 @@ export default function ReportList() {
                     {/* Status */}
                     <td className="py-3.5 px-4">
                       {getStatusBadge(report.status)}
+                      <span className={`mt-1 inline-flex px-2 py-0.5 rounded text-[10px] font-semibold ${
+                        report.is_public
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          : 'bg-amber-50 text-amber-700 border border-amber-200'
+                      }`}>
+                        {report.is_public
+                          ? 'Published'
+                          : report.visibility_reviewed_at
+                            ? 'Kept private'
+                            : 'Needs review'}
+                      </span>
                     </td>
 
                     {/* Severity */}

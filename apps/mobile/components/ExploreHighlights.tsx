@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, View, Text, ScrollView, TouchableOpacity, ImageBackground, useColorScheme } from 'react-native';
 import { theme } from '@/constants/theme';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { getPrivateImageUrl } from '@/lib/storage';
 
 interface HighlightReport {
   id: string;
@@ -18,6 +19,7 @@ interface HighlightReport {
   };
   report_photos: {
     image_url: string;
+    bucket_id?: string;
   }[];
 }
 
@@ -35,6 +37,30 @@ export function ExploreHighlights({ reports }: ExploreHighlightsProps) {
     : storeTheme;
   
   const colors = theme[currentTheme as 'light' | 'dark'];
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let active = true;
+
+    Promise.all(reports.map(async report => {
+      const photo = report.report_photos[0];
+      if (!photo) return [report.id, ''] as const;
+
+      try {
+        return [
+          report.id,
+          await getPrivateImageUrl(photo.image_url, photo.bucket_id || 'report-photos'),
+        ] as const;
+      } catch (error) {
+        console.error('Unable to load highlight photo:', error);
+        return [report.id, ''] as const;
+      }
+    })).then(entries => {
+      if (active) setPhotoUrls(Object.fromEntries(entries.filter(([, url]) => url)));
+    });
+
+    return () => { active = false; };
+  }, [reports]);
 
   if (!reports || reports.length === 0) return null;
 
@@ -63,7 +89,7 @@ export function ExploreHighlights({ reports }: ExploreHighlightsProps) {
             activeOpacity={0.88}
           >
             <ImageBackground
-              source={{ uri: `${process.env.EXPO_PUBLIC_SUPABASE_URL}/storage/v1/object/public/report-photos/${report.report_photos[0]?.image_url}` }}
+              source={photoUrls[report.id] ? { uri: photoUrls[report.id] } : undefined}
               style={styles.image}
               imageStyle={{ borderRadius: 4 }}
             >

@@ -33,6 +33,7 @@ export function useLocation() {
   const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     async function getPermissions() {
@@ -43,14 +44,22 @@ export function useLocation() {
           return;
         }
 
-        let { status } = await Location.requestForegroundPermissionsAsync();
+        const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           setErrorMsg('Permission to access location was denied');
           return;
         }
 
+        const lastKnown = await Location.getLastKnownPositionAsync({
+          maxAge: 120_000,
+          requiredAccuracy: 1_000,
+        });
+        if (lastKnown) {
+          setLocation(lastKnown);
+        }
+
         let loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Highest,
+          accuracy: Location.Accuracy.Balanced,
         });
 
         // If we are on an emulator and it returns Google HQ, use our mock coordinates
@@ -114,11 +123,13 @@ export function useLocation() {
       } catch (error: any) {
         setErrorMsg(error.message || 'An error occurred while fetching location');
         console.error('Location error:', error);
+      } finally {
+        setIsLoading(false);
       }
     }
 
     getPermissions();
   }, []);
 
-  return { location, address, errorMsg };
+  return { location, address, errorMsg, isLoading };
 }
